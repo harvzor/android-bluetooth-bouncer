@@ -1,0 +1,17 @@
+# Build outputs
+build/
+app/build/
+.gradle/
+
+# Local properties
+local.properties
+
+# Screenshots
+screen*.png
+
+# Android Studio
+*.iml
+.idea/
+
+# Gradle cache
+.gradle/
