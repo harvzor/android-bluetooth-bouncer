@@ -127,7 +127,18 @@ class ShizukuHelper(private val context: Context) {
             ?: return Result.failure(IllegalStateException("Shizuku UserService is not available"))
         return try {
             val results = service.setConnectionPolicy(macAddress, policy)
-            Result.success(results)
+            // Each entry: 1 = success, 0 = call returned false, -1 = proxy unavailable.
+            // If no profile reported success the OS policy was never changed — treat as failure.
+            if (results.none { it == 1 }) {
+                Result.failure(
+                    IllegalStateException(
+                        "setConnectionPolicy had no effect on any profile (results: ${results.toList()}). " +
+                        "Check that Shizuku is running and has BLUETOOTH_PRIVILEGED."
+                    )
+                )
+            } else {
+                Result.success(results)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "setConnectionPolicy failed", e)
             Result.failure(e)
