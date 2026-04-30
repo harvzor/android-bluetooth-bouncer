@@ -15,3 +15,6 @@ screen*.png
 
 # Gradle cache
 .gradle/
+
+# Kotlin compiler/cache
+.kotlin/
