@@ -22,6 +22,6 @@
 ## 5. Verification
 
 - [x] 5.1 Build the app and verify no compilation errors
-- [ ] 5.2 On physical device: pair a Bluetooth device, open the app, connect/disconnect the device — verify "Connected" indicator updates within ~1 second without restarting the app
-- [ ] 5.3 On physical device: toggle Bluetooth off/on while the app is open — verify the device list clears and repopulates
-- [ ] 5.4 Verify that opening the app, navigating away, and returning does not crash (receiver lifecycle)
+- [x] 5.2 On physical device: pair a Bluetooth device, open the app, connect/disconnect the device — verify "Connected" indicator updates within ~1 second without restarting the app
+- [x] 5.3 On physical device: toggle Bluetooth off/on while the app is open — verify the device list clears and repopulates
+- [x] 5.4 Verify that opening the app, navigating away, and returning does not crash (receiver lifecycle)

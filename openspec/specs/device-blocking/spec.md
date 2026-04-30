@@ -48,7 +48,7 @@ The app SHALL persist the list of blocked devices in a local Room database. The 
 - **THEN** the device is not shown in the main list (only currently paired devices are shown)
 
 ### Requirement: Show device connection status
-The app SHALL indicate whether each paired device is currently connected. This helps users understand which devices are actively connected before deciding to block them.
+The app SHALL indicate whether each paired device is currently connected. The connection indicator SHALL update in real time while the app is in the foreground — when a device connects or disconnects, the indicator SHALL reflect the new state within 1 second without requiring the user to restart the app or manually refresh.
 
 #### Scenario: Connected device is indicated
 - **WHEN** a paired device is currently connected via any Bluetooth profile
@@ -57,6 +57,14 @@ The app SHALL indicate whether each paired device is currently connected. This h
 #### Scenario: Disconnected device is indicated
 - **WHEN** a paired device is paired but not currently connected
 - **THEN** the device entry does not display a "Connected" indicator
+
+#### Scenario: Device connects while viewing the list
+- **WHEN** the user is viewing the device list and a paired device establishes a connection
+- **THEN** the "Connected" indicator appears on that device's entry without user intervention
+
+#### Scenario: Device disconnects while viewing the list
+- **WHEN** the user is viewing the device list and a connected device disconnects
+- **THEN** the "Connected" indicator is removed from that device's entry without user intervention
 
 ### Requirement: Re-apply policies for re-paired devices
 The app SHALL listen for `BOND_STATE_CHANGED` broadcasts. When a device that was previously in the blocked list is re-paired, the app SHALL automatically re-apply `CONNECTION_POLICY_FORBIDDEN` if Shizuku is available.
