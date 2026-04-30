@@ -281,6 +281,12 @@ private fun DeviceRow(
                         style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFF4CAF50)
                     )
+                } else if (device.isDetected) {
+                    Text(
+                        text = "Detected",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }

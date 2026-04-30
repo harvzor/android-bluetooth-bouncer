@@ -46,6 +46,7 @@ class DeviceListViewModel(
         val name: String,
         val isBlocked: Boolean,
         val isConnected: Boolean,
+        val isDetected: Boolean,
     )
 
     data class UiState(
@@ -298,14 +299,19 @@ class DeviceListViewModel(
 
         val connectedAddresses = profileConnected + (aclConnected - blockedAddresses)
 
+        // ACL-present but not profile-connected — covers blocked devices nearby and other
+        // paired devices that have an ACL link without a profile connection.
+        val detectedAddresses = aclConnected - connectedAddresses
+
         val devices = adapter.bondedDevices.orEmpty().map { device ->
             DeviceUiModel(
                 address = device.address,
                 name = device.name ?: device.address,
                 isBlocked = device.address in blockedAddresses,
                 isConnected = device.address in connectedAddresses,
+                isDetected = device.address in detectedAddresses,
             )
-        }.sortedWith(compareByDescending<DeviceUiModel> { it.isConnected }.thenBy { it.name })
+        }.sortedWith(compareByDescending<DeviceUiModel> { it.isConnected }.thenByDescending { it.isDetected }.thenBy { it.name })
 
         _uiState.update { it.copy(bluetoothEnabled = true, devices = devices, isLoading = false) }
     }
