@@ -2,9 +2,12 @@ package net.harveywilliams.bluetoothbouncer.viewmodel
 
 import android.annotation.SuppressLint
 import android.app.Application
+import android.bluetooth.BluetoothA2dp
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothHeadset
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -65,9 +68,21 @@ class DeviceListViewModel(
     /**
      * Dynamically-registered receiver for ACL connection and adapter state events.
      * Non-null only after [onBluetoothPermissionResult] has been called with granted = true.
-     * Guarded against double-registration by the null check in [onBluetoothPermissionResult].
+     * Guarded against double-registration by the null check in [registerBluetoothEventReceiver].
      */
     private var bluetoothEventReceiver: BroadcastReceiver? = null
+
+    /**
+     * Profile proxies for A2DP and Headset — used to determine connection state at the
+     * profile level rather than the ACL level. This avoids false "Connected" indicators
+     * on devices where CONNECTION_POLICY_FORBIDDEN maintains the ACL link after all profiles
+     * are disconnected.
+     *
+     * Initialised after BLUETOOTH_CONNECT permission is granted. May be null before that
+     * or if the profile service is unavailable; [refreshDeviceList] falls back gracefully.
+     */
+    @Volatile private var a2dpProxy: BluetoothA2dp? = null
+    @Volatile private var headsetProxy: BluetoothHeadset? = null
 
     init {
         // Sole long-lived collector on the Room Flow — observes Shizuku state and the
@@ -112,6 +127,7 @@ class DeviceListViewModel(
         _uiState.update { it.copy(btPermissionGranted = granted, isLoading = !granted) }
         if (granted) {
             registerBluetoothEventReceiver()
+            initProfileProxies()
             refreshDevices()
         }
     }
@@ -180,6 +196,8 @@ class DeviceListViewModel(
     override fun onCleared() {
         super.onCleared()
         unregisterBluetoothEventReceiver()
+        a2dpProxy?.let { btAdapter?.closeProfileProxy(BluetoothProfile.A2DP, it) }
+        headsetProxy?.let { btAdapter?.closeProfileProxy(BluetoothProfile.HEADSET, it) }
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -225,6 +243,38 @@ class DeviceListViewModel(
         }
     }
 
+    /**
+     * Requests profile proxies for A2DP and Headset so [refreshDeviceList] can use
+     * profile-level connection state instead of the ACL-level [BluetoothDevice.isConnected].
+     * No-op if the adapter is unavailable. Safe to call more than once — the system
+     * returns the existing proxy if one is already bound.
+     */
+    @SuppressLint("MissingPermission")
+    private fun initProfileProxies() {
+        val adapter = btAdapter ?: return
+        adapter.getProfileProxy(getApplication(), object : BluetoothProfile.ServiceListener {
+            override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+                a2dpProxy = proxy as? BluetoothA2dp
+                Log.d(TAG, "A2DP proxy connected")
+            }
+            override fun onServiceDisconnected(profile: Int) {
+                a2dpProxy = null
+                Log.d(TAG, "A2DP proxy disconnected")
+            }
+        }, BluetoothProfile.A2DP)
+
+        adapter.getProfileProxy(getApplication(), object : BluetoothProfile.ServiceListener {
+            override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+                headsetProxy = proxy as? BluetoothHeadset
+                Log.d(TAG, "Headset proxy connected")
+            }
+            override fun onServiceDisconnected(profile: Int) {
+                headsetProxy = null
+                Log.d(TAG, "Headset proxy disconnected")
+            }
+        }, BluetoothProfile.HEADSET)
+    }
+
     @SuppressLint("MissingPermission")
     private fun refreshDeviceList(blockedDevices: List<BlockedDeviceEntity>) {
         val adapter = btAdapter
@@ -234,7 +284,19 @@ class DeviceListViewModel(
         }
 
         val blockedAddresses = blockedDevices.map { it.macAddress }.toSet()
-        val connectedAddresses = getConnectedDeviceAddresses()
+
+        // Profile-level connected addresses — not affected by CONNECTION_POLICY_FORBIDDEN
+        // maintaining an ACL link after all profiles are disconnected.
+        val a2dpConnected = a2dpProxy?.connectedDevices.orEmpty().map { it.address }.toSet()
+        val headsetConnected = headsetProxy?.connectedDevices.orEmpty().map { it.address }.toSet()
+        val profileConnected = a2dpConnected + headsetConnected
+
+        // ACL-level connected addresses — fallback for HID keyboards/mice and other profiles
+        // not covered by the proxies above. Excluded for blocked devices to avoid false
+        // positives from the Bluetooth stack maintaining an ACL link for policy enforcement.
+        val aclConnected = getAclConnectedAddresses()
+
+        val connectedAddresses = profileConnected + (aclConnected - blockedAddresses)
 
         val devices = adapter.bondedDevices.orEmpty().map { device ->
             DeviceUiModel(
@@ -249,12 +311,12 @@ class DeviceListViewModel(
     }
 
     /**
-     * Checks which bonded devices are currently connected using the hidden
-     * BluetoothDevice.isConnected() method via reflection.
-     * Available as an @hide API since API 28; safe to call via reflection at runtime.
+     * Returns addresses of bonded devices that have an active ACL connection, via the hidden
+     * [BluetoothDevice.isConnected] method. Used as a fallback for profiles (e.g. HID) not
+     * covered by the A2DP / Headset proxies.
      */
     @SuppressLint("MissingPermission")
-    private fun getConnectedDeviceAddresses(): Set<String> {
+    private fun getAclConnectedAddresses(): Set<String> {
         val adapter = btAdapter ?: return emptySet()
         return adapter.bondedDevices.orEmpty().mapNotNull { device ->
             try {
