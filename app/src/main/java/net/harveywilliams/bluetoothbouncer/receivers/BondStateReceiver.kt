@@ -41,6 +41,8 @@ class BondStateReceiver : BroadcastReceiver() {
                 val blocked = app.database.blockedDeviceDao().getDeviceByMac(device.address)
                 if (blocked == null) {
                     Log.d(TAG, "Device ${device.address} not in blocked list — nothing to do")
+                    // Emit so the ViewModel picks up the newly bonded device in the list.
+                    app.refreshSignal.tryEmit(Unit)
                     return@launch
                 }
 
@@ -49,6 +51,7 @@ class BondStateReceiver : BroadcastReceiver() {
                 if (shizukuHelper.state.value !is ShizukuHelper.State.Ready) {
                     Log.w(TAG, "Shizuku not ready — cannot re-apply policy for ${device.address}. " +
                         "Policy will be applied when the user next opens the app with Shizuku running.")
+                    app.refreshSignal.tryEmit(Unit)
                     return@launch
                 }
 
@@ -61,6 +64,8 @@ class BondStateReceiver : BroadcastReceiver() {
                 } else {
                     Log.w(TAG, "Failed to re-apply FORBIDDEN for ${device.address}: ${result.exceptionOrNull()?.message}")
                 }
+                // Emit so the ViewModel reflects the bond/policy change immediately.
+                app.refreshSignal.tryEmit(Unit)
             } finally {
                 pendingResult.finish()
             }
