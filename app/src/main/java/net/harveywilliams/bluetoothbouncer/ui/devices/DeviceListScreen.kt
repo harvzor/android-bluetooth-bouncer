@@ -1,7 +1,9 @@
 package net.harveywilliams.bluetoothbouncer.ui.devices
 
 import android.Manifest
+import android.content.Context
 import android.content.IntentSender
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
@@ -50,6 +52,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -71,9 +74,14 @@ fun DeviceListScreen(
     onRefresh: () -> Unit,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
     var showPermissionRationale by remember { mutableStateOf(false) }
+    var notificationPermissionDenied by remember { mutableStateOf(false) }
 
-    // ── Permission launcher ───────────────────────────────────────────────────
+    // Device waiting on notification permission before the Watch association can proceed.
+    var pendingWatchDevice by remember { mutableStateOf<DeviceListViewModel.DeviceUiModel?>(null) }
+
+    // ── Permission launcher (Bluetooth) ──────────────────────────────────────
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -81,11 +89,44 @@ fun DeviceListScreen(
         if (!granted) showPermissionRationale = true
     }
 
-    // ── CDM association launcher (Watch toggle, API 33+) ──────────────────────
+    // ── POST_NOTIFICATIONS permission launcher (API 33+, required for Watch) ─
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val device = pendingWatchDevice
+        pendingWatchDevice = null
+        if (granted && device != null) {
+            onToggleWatch(device)
+        } else if (!granted) {
+            notificationPermissionDenied = true
+        }
+    }
+
+    // ── CDM association launcher (Watch toggle, API 33+) ─────────────────────
     val watchAssociationLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
         onWatchAssociationResult(result.resultCode)
+    }
+
+    // Wrapper that gates Watch-enable on POST_NOTIFICATIONS permission.
+    val safeToggleWatch: (DeviceListViewModel.DeviceUiModel) -> Unit = { device ->
+        if (!device.isWatched && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingWatchDevice = device
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            onToggleWatch(device)
+        }
+    }
+
+    // Show snackbar when notification permission was denied while trying to enable Watch.
+    LaunchedEffect(notificationPermissionDenied) {
+        if (notificationPermissionDenied) {
+            snackbarHostState.showSnackbar("Notification permission denied — Watch won't be able to alert you when the device is nearby")
+            notificationPermissionDenied = false
+        }
     }
 
     // Launch the CDM association dialog whenever a new IntentSender arrives.
@@ -172,7 +213,7 @@ fun DeviceListScreen(
                         shizukuReady = uiState.shizukuState is ShizukuHelper.State.Ready,
                         watchLoadingAddress = uiState.watchLoadingAddress,
                         onToggleBlock = onToggleBlock,
-                        onToggleWatch = onToggleWatch,
+                        onToggleWatch = safeToggleWatch,
                     )
                 }
             }

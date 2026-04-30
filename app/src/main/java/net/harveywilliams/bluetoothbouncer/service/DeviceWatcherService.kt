@@ -39,14 +39,20 @@ class DeviceWatcherService : CompanionDeviceService() {
      */
     override fun onDeviceAppeared(associationInfo: AssociationInfo) {
         val associationId = associationInfo.id
-        Log.d(TAG, "onDeviceAppeared: associationId=$associationId")
+        val mac = associationInfo.deviceMacAddress?.toString()?.uppercase()
+        Log.d(TAG, "onDeviceAppeared: associationId=$associationId mac=$mac")
 
         serviceScope.launch {
             val app = applicationContext as BluetoothBouncerApp
             val dao = app.database.blockedDeviceDao()
-            val entity = dao.getDeviceByAssociationId(associationId) ?: run {
-                Log.w(TAG, "onDeviceAppeared: no entity found for associationId=$associationId")
+            val entity = resolveEntity(dao, associationId, mac) ?: run {
+                Log.w(TAG, "onDeviceAppeared: no entity found for associationId=$associationId mac=$mac")
                 return@launch
+            }
+            // Heal any stale association ID persisted in Room
+            if (entity.cdmAssociationId != associationId) {
+                Log.d(TAG, "Updating stale cdmAssociationId ${entity.cdmAssociationId} -> $associationId for ${entity.macAddress}")
+                dao.updateCdmAssociationId(entity.macAddress, associationId)
             }
             if (!entity.isTemporarilyAllowed) {
                 WatchNotificationHelper.postNearbyNotification(this@DeviceWatcherService, entity)
@@ -65,13 +71,14 @@ class DeviceWatcherService : CompanionDeviceService() {
      */
     override fun onDeviceDisappeared(associationInfo: AssociationInfo) {
         val associationId = associationInfo.id
-        Log.d(TAG, "onDeviceDisappeared: associationId=$associationId")
+        val mac = associationInfo.deviceMacAddress?.toString()?.uppercase()
+        Log.d(TAG, "onDeviceDisappeared: associationId=$associationId mac=$mac")
 
         serviceScope.launch {
             val app = applicationContext as BluetoothBouncerApp
             val dao = app.database.blockedDeviceDao()
-            val entity = dao.getDeviceByAssociationId(associationId) ?: run {
-                Log.w(TAG, "onDeviceDisappeared: no entity found for associationId=$associationId")
+            val entity = resolveEntity(dao, associationId, mac) ?: run {
+                Log.w(TAG, "onDeviceDisappeared: no entity found for associationId=$associationId mac=$mac")
                 return@launch
             }
 
@@ -80,8 +87,6 @@ class DeviceWatcherService : CompanionDeviceService() {
                 return@launch
             }
 
-            // Defer re-blocking if an ACL link is still active (e.g., one profile dropped but
-            // another is still connected).
             if (isDeviceAclConnected(entity.macAddress)) {
                 Log.d(TAG, "Device ${entity.deviceName} still ACL-connected — deferring re-block")
                 return@launch
@@ -103,6 +108,28 @@ class DeviceWatcherService : CompanionDeviceService() {
     override fun onDestroy() {
         super.onDestroy()
         serviceScope.cancel()
+    }
+
+    /**
+     * Returns the [BlockedDeviceEntity] for the given [associationId], falling back to a
+     * MAC-address lookup if no row matches the ID directly.
+     *
+     * The fallback handles stale association IDs that were created before the app crashed or
+     * was reinstalled — the CDM may keep delivering callbacks for an old ID while Room only
+     * knows about a newer one.
+     */
+    private suspend fun resolveEntity(
+        dao: net.harveywilliams.bluetoothbouncer.data.BlockedDeviceDao,
+        associationId: Int,
+        mac: String?,
+    ): net.harveywilliams.bluetoothbouncer.data.BlockedDeviceEntity? {
+        dao.getDeviceByAssociationId(associationId)?.let { return it }
+        if (mac != null) {
+            val byMac = dao.getDeviceByMac(mac)
+            // Only use the MAC fallback if this device is actually watched (non-null cdmAssociationId)
+            if (byMac?.cdmAssociationId != null) return byMac
+        }
+        return null
     }
 
     /**
