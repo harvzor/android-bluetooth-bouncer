@@ -1,0 +1,130 @@
+package net.harveywilliams.bluetoothbouncer.service
+
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothAdapter
+import android.companion.AssociationInfo
+import android.companion.CompanionDeviceService
+import android.os.Build
+import android.util.Log
+import androidx.annotation.RequiresApi
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import net.harveywilliams.bluetoothbouncer.BluetoothBouncerApp
+import net.harveywilliams.bluetoothbouncer.notification.WatchNotificationHelper
+import net.harveywilliams.bluetoothbouncer.shizuku.ShizukuHelper
+
+/**
+ * Background presence-detection service for watched blocked devices.
+ *
+ * The OS wakes this service whenever a registered CDM-associated device appears or disappears,
+ * even when the app process is not running.
+ *
+ * Requires API 33 (TIRAMISU) for [onDeviceAppeared] and [onDeviceDisappeared] with
+ * [AssociationInfo] parameter. [CompanionDeviceService] itself was added in API 31, but
+ * presence observation ([startObservingDevicePresence]) and these callbacks require API 33.
+ */
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+class DeviceWatcherService : CompanionDeviceService() {
+
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
+     * Called when a CDM-associated device comes into Bluetooth range.
+     *
+     * Posts the "nearby" notification if the device is still blocked and not yet
+     * temporarily allowed.
+     */
+    override fun onDeviceAppeared(associationInfo: AssociationInfo) {
+        val associationId = associationInfo.id
+        Log.d(TAG, "onDeviceAppeared: associationId=$associationId")
+
+        serviceScope.launch {
+            val app = applicationContext as BluetoothBouncerApp
+            val dao = app.database.blockedDeviceDao()
+            val entity = dao.getDeviceByAssociationId(associationId) ?: run {
+                Log.w(TAG, "onDeviceAppeared: no entity found for associationId=$associationId")
+                return@launch
+            }
+            if (!entity.isTemporarilyAllowed) {
+                WatchNotificationHelper.postNearbyNotification(this@DeviceWatcherService, entity)
+                Log.d(TAG, "Posted nearby notification for ${entity.deviceName}")
+            } else {
+                Log.d(TAG, "Device ${entity.deviceName} already temporarily allowed — skipping notification")
+            }
+        }
+    }
+
+    /**
+     * Called when a CDM-associated device leaves Bluetooth range.
+     *
+     * If the device was temporarily allowed and is not actively profile-connected (ACL),
+     * re-applies [ShizukuHelper.POLICY_FORBIDDEN] and clears the temporary-allow flag.
+     */
+    override fun onDeviceDisappeared(associationInfo: AssociationInfo) {
+        val associationId = associationInfo.id
+        Log.d(TAG, "onDeviceDisappeared: associationId=$associationId")
+
+        serviceScope.launch {
+            val app = applicationContext as BluetoothBouncerApp
+            val dao = app.database.blockedDeviceDao()
+            val entity = dao.getDeviceByAssociationId(associationId) ?: run {
+                Log.w(TAG, "onDeviceDisappeared: no entity found for associationId=$associationId")
+                return@launch
+            }
+
+            if (!entity.isTemporarilyAllowed) {
+                Log.d(TAG, "Device ${entity.deviceName} is not temporarily allowed — no action needed")
+                return@launch
+            }
+
+            // Defer re-blocking if an ACL link is still active (e.g., one profile dropped but
+            // another is still connected).
+            if (isDeviceAclConnected(entity.macAddress)) {
+                Log.d(TAG, "Device ${entity.deviceName} still ACL-connected — deferring re-block")
+                return@launch
+            }
+
+            val result = app.shizukuHelper.setConnectionPolicy(
+                entity.macAddress,
+                ShizukuHelper.POLICY_FORBIDDEN,
+            )
+            if (result.isSuccess) {
+                dao.updateIsTemporarilyAllowed(entity.macAddress, false)
+                Log.d(TAG, "Re-blocked ${entity.deviceName} after departure")
+            } else {
+                Log.e(TAG, "Failed to re-block ${entity.deviceName}: ${result.exceptionOrNull()}")
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        serviceScope.cancel()
+    }
+
+    /**
+     * Returns true if a Bluetooth ACL link to the given [macAddress] is still active.
+     *
+     * Uses the hidden [BluetoothDevice.isConnected] API via reflection (same approach as the
+     * existing codebase). A live ACL link means at least one profile is still connected.
+     */
+    @SuppressLint("MissingPermission")
+    private fun isDeviceAclConnected(macAddress: String): Boolean {
+        return try {
+            val adapter = BluetoothAdapter.getDefaultAdapter() ?: return false
+            val device = adapter.getRemoteDevice(macAddress)
+            val method = device.javaClass.getMethod("isConnected")
+            method.invoke(device) as? Boolean ?: false
+        } catch (e: Exception) {
+            Log.w(TAG, "isDeviceAclConnected failed for $macAddress", e)
+            false
+        }
+    }
+
+    companion object {
+        private const val TAG = "DeviceWatcherService"
+    }
+}

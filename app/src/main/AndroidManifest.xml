@@ -3,6 +3,10 @@
 
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_OBSERVE_COMPANION_DEVICE_PRESENCE" />
+
+    <uses-feature android:name="android.software.companion_device_setup" />
 
     <application
         android:name=".BluetoothBouncerApp"
@@ -47,6 +51,25 @@
                 <action android:name="android.bluetooth.device.action.BOND_STATE_CHANGED" />
             </intent-filter>
         </receiver>
+
+        <!-- Temporary-allow notification action receiver -->
+        <receiver
+            android:name=".receivers.TemporaryAllowReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="net.harveywilliams.bluetoothbouncer.ACTION_ALLOW_TEMPORARILY" />
+            </intent-filter>
+        </receiver>
+
+        <!-- CompanionDeviceService for background Bluetooth presence detection (API 33+) -->
+        <service
+            android:name=".service.DeviceWatcherService"
+            android:exported="true"
+            android:permission="android.permission.BIND_COMPANION_DEVICE_SERVICE">
+            <intent-filter>
+                <action android:name="android.companion.CompanionDeviceService" />
+            </intent-filter>
+        </service>
 
     </application>
 

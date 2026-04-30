@@ -1,6 +1,7 @@
 package net.harveywilliams.bluetoothbouncer.viewmodel
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.app.Application
 import android.bluetooth.BluetoothA2dp
 import android.bluetooth.BluetoothAdapter
@@ -12,6 +13,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.IntentSender
 import android.os.Build
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
@@ -31,6 +33,7 @@ import kotlinx.coroutines.launch
 import net.harveywilliams.bluetoothbouncer.BluetoothBouncerApp
 import net.harveywilliams.bluetoothbouncer.data.BlockedDeviceDao
 import net.harveywilliams.bluetoothbouncer.data.BlockedDeviceEntity
+import net.harveywilliams.bluetoothbouncer.service.DeviceWatchManager
 import net.harveywilliams.bluetoothbouncer.shizuku.ShizukuHelper
 
 class DeviceListViewModel(
@@ -47,6 +50,8 @@ class DeviceListViewModel(
         val isBlocked: Boolean,
         val isConnected: Boolean,
         val isDetected: Boolean,
+        /** True when the device has an active CDM association for background presence monitoring. */
+        val isWatched: Boolean = false,
     )
 
     data class UiState(
@@ -56,6 +61,13 @@ class DeviceListViewModel(
         val devices: List<DeviceUiModel> = emptyList(),
         val isLoading: Boolean = true,
         val toggleError: String? = null,
+        /**
+         * MAC address of the device whose Watch toggle is currently in-flight
+         * (association dialog shown or request pending). Used to grey out the toggle.
+         */
+        val watchLoadingAddress: String? = null,
+        /** Message to show in a Snackbar when a Watch operation fails or is cancelled. */
+        val watchError: String? = null,
     )
 
     // ── State ─────────────────────────────────────────────────────────────────
@@ -63,8 +75,28 @@ class DeviceListViewModel(
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
+    /**
+     * Emits an [IntentSender] when the CDM association dialog needs to be launched by the UI.
+     * The composable should observe this, launch via [startIntentSenderForResult], then call
+     * [onWatchAssociationResult] with the result code.
+     */
+    private val _watchAssociationIntent = MutableStateFlow<IntentSender?>(null)
+    val watchAssociationIntent: StateFlow<IntentSender?> = _watchAssociationIntent.asStateFlow()
+
+    /** The device currently undergoing a Watch association flow. */
+    private var pendingWatchDevice: DeviceUiModel? = null
+
     private val btAdapter: BluetoothAdapter? =
         application.getSystemService(BluetoothManager::class.java)?.adapter
+
+    /**
+     * Manages CompanionDeviceManager operations (associate, startObservingDevicePresence, etc.).
+     * Null on API < 33 — all call sites must guard with the same API check.
+     */
+    private val deviceWatchManager: DeviceWatchManager? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            DeviceWatchManager(application, blockedDeviceDao)
+        } else null
 
     /**
      * Dynamically-registered receiver for ACL connection and adapter state events.
@@ -145,6 +177,9 @@ class DeviceListViewModel(
      * Toggle block/unblock for a device.
      * Applies an optimistic update, calls Shizuku, updates Room on success,
      * or reverts on failure.
+     *
+     * When unblocking a watched device (non-null [cdmAssociationId]), this also runs
+     * the disable-watch flow ([DeviceWatchManager.disableWatch]) before deleting the Room row.
      */
     fun toggleBlock(device: DeviceUiModel) {
         val newBlocked = !device.isBlocked
@@ -170,6 +205,14 @@ class DeviceListViewModel(
                         )
                     )
                 } else {
+                    // Unblocking: clean up CDM association if Watch was enabled
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        val entity = blockedDeviceDao.getDeviceByMac(device.address)
+                        val assocId = entity?.cdmAssociationId
+                        if (assocId != null) {
+                            deviceWatchManager?.disableWatch(device.address, assocId)
+                        }
+                    }
                     blockedDeviceDao.deleteDevice(device.address)
                 }
             } else {
@@ -188,8 +231,88 @@ class DeviceListViewModel(
         }
     }
 
+    /**
+     * Toggles the Watch state for a blocked device (API 33+ only).
+     *
+     * Enabling: initiates a CDM association via [DeviceWatchManager.associate]. A pending
+     * [IntentSender] is emitted via [watchAssociationIntent] for the UI to launch.
+     * Disabling: stops presence observation and removes the CDM association.
+     */
+    fun toggleWatch(device: DeviceUiModel) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val manager = deviceWatchManager ?: return
+
+        if (device.isWatched) {
+            // Disable watch
+            viewModelScope.launch {
+                val entity = blockedDeviceDao.getDeviceByMac(device.address) ?: return@launch
+                val assocId = entity.cdmAssociationId ?: return@launch
+                manager.disableWatch(device.address, assocId)
+            }
+        } else {
+            // Enable watch — begin association flow
+            _uiState.update { it.copy(watchLoadingAddress = device.address) }
+            pendingWatchDevice = device
+
+            manager.associate(
+                macAddress = device.address,
+                onPendingIntent = { intentSender ->
+                    _watchAssociationIntent.value = intentSender
+                },
+                onSuccess = { associationInfo ->
+                    viewModelScope.launch {
+                        try {
+                            manager.enableWatch(device.address, associationInfo.id)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "enableWatch failed for ${device.address}", e)
+                            _uiState.update {
+                                it.copy(watchError = "Failed to enable Watch: ${e.message}")
+                            }
+                        } finally {
+                            _uiState.update { it.copy(watchLoadingAddress = null) }
+                            pendingWatchDevice = null
+                        }
+                    }
+                },
+                onFailure = { _ ->
+                    _uiState.update {
+                        it.copy(
+                            watchLoadingAddress = null,
+                            watchError = "Device not found nearby. Try again when it's in Bluetooth range.",
+                        )
+                    }
+                    pendingWatchDevice = null
+                    _watchAssociationIntent.value = null
+                },
+            )
+        }
+    }
+
+    /**
+     * Called by the UI with the result from the CDM association dialog.
+     * [Activity.RESULT_OK] means the user confirmed — [onSuccess] in [toggleWatch] handles it.
+     * Any other result means the user cancelled or the dialog failed.
+     */
+    fun onWatchAssociationResult(resultCode: Int) {
+        _watchAssociationIntent.value = null
+        if (resultCode != Activity.RESULT_OK) {
+            _uiState.update {
+                it.copy(
+                    watchLoadingAddress = null,
+                    watchError = "Device not found nearby. Try again when it's in Bluetooth range.",
+                )
+            }
+            pendingWatchDevice = null
+        }
+        // RESULT_OK: onAssociationCreated already fired and is handled by the onSuccess callback.
+    }
+
     fun clearToggleError() {
         _uiState.update { it.copy(toggleError = null) }
+    }
+
+    fun clearWatchError() {
+        _uiState.update { it.copy(watchError = null) }
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -286,6 +409,12 @@ class DeviceListViewModel(
 
         val blockedAddresses = blockedDevices.map { it.macAddress }.toSet()
 
+        // Watched device addresses (have a non-null cdmAssociationId)
+        val watchedAddresses = blockedDevices
+            .filter { it.cdmAssociationId != null }
+            .map { it.macAddress }
+            .toSet()
+
         // Profile-level connected addresses — not affected by CONNECTION_POLICY_FORBIDDEN
         // maintaining an ACL link after all profiles are disconnected.
         val a2dpConnected = a2dpProxy?.connectedDevices.orEmpty().map { it.address }.toSet()
@@ -310,6 +439,7 @@ class DeviceListViewModel(
                 isBlocked = device.address in blockedAddresses,
                 isConnected = device.address in connectedAddresses,
                 isDetected = device.address in detectedAddresses,
+                isWatched = device.address in watchedAddresses,
             )
         }.sortedWith(compareByDescending<DeviceUiModel> { it.isConnected }.thenByDescending { it.isDetected }.thenBy { it.name })
 

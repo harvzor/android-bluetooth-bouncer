@@ -8,5 +8,7 @@ data class BlockedDeviceEntity(
     @PrimaryKey
     val macAddress: String,
     val deviceName: String,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val cdmAssociationId: Int? = null,
+    val isTemporarilyAllowed: Boolean = false,
 )

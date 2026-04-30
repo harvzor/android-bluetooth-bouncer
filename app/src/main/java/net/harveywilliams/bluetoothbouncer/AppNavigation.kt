@@ -37,6 +37,7 @@ fun AppNavigation(
         )
     )
     val uiState by viewModel.uiState.collectAsState()
+    val watchAssociationIntent by viewModel.watchAssociationIntent.collectAsState()
 
     NavHost(navController = navController, startDestination = Routes.DEVICE_LIST) {
 
@@ -44,6 +45,10 @@ fun AppNavigation(
             DeviceListScreen(
                 uiState = uiState,
                 onToggleBlock = viewModel::toggleBlock,
+                onToggleWatch = viewModel::toggleWatch,
+                watchAssociationIntent = watchAssociationIntent,
+                onWatchAssociationResult = viewModel::onWatchAssociationResult,
+                onClearWatchError = viewModel::clearWatchError,
                 onBluetoothPermissionResult = viewModel::onBluetoothPermissionResult,
                 onNavigateToSetup = { navController.navigate(Routes.SHIZUKU_SETUP) },
                 onClearToggleError = viewModel::clearToggleError,

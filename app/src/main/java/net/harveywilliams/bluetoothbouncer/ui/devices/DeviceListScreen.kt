@@ -1,7 +1,10 @@
 package net.harveywilliams.bluetoothbouncer.ui.devices
 
 import android.Manifest
+import android.content.IntentSender
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,6 +61,10 @@ import net.harveywilliams.bluetoothbouncer.viewmodel.DeviceListViewModel
 fun DeviceListScreen(
     uiState: DeviceListViewModel.UiState,
     onToggleBlock: (DeviceListViewModel.DeviceUiModel) -> Unit,
+    onToggleWatch: (DeviceListViewModel.DeviceUiModel) -> Unit,
+    watchAssociationIntent: IntentSender?,
+    onWatchAssociationResult: (Int) -> Unit,
+    onClearWatchError: () -> Unit,
     onBluetoothPermissionResult: (Boolean) -> Unit,
     onNavigateToSetup: () -> Unit,
     onClearToggleError: () -> Unit,
@@ -66,12 +73,28 @@ fun DeviceListScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var showPermissionRationale by remember { mutableStateOf(false) }
 
-    // ── Permission launcher (task 6.3) ───────────────────────────────────────
+    // ── Permission launcher ───────────────────────────────────────────────────
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         onBluetoothPermissionResult(granted)
         if (!granted) showPermissionRationale = true
+    }
+
+    // ── CDM association launcher (Watch toggle, API 33+) ──────────────────────
+    val watchAssociationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        onWatchAssociationResult(result.resultCode)
+    }
+
+    // Launch the CDM association dialog whenever a new IntentSender arrives.
+    LaunchedEffect(watchAssociationIntent) {
+        watchAssociationIntent?.let { intentSender ->
+            watchAssociationLauncher.launch(
+                IntentSenderRequest.Builder(intentSender).build()
+            )
+        }
     }
 
     // Request BT permission on first load if not granted
@@ -81,11 +104,19 @@ fun DeviceListScreen(
         }
     }
 
-    // Show toggle errors as a snackbar (task 5.5)
+    // Show block/unblock toggle errors as a snackbar
     LaunchedEffect(uiState.toggleError) {
         uiState.toggleError?.let {
             snackbarHostState.showSnackbar(it)
             onClearToggleError()
+        }
+    }
+
+    // Show Watch operation errors / cancellations as a snackbar
+    LaunchedEffect(uiState.watchError) {
+        uiState.watchError?.let {
+            snackbarHostState.showSnackbar(it)
+            onClearWatchError()
         }
     }
 
@@ -110,7 +141,7 @@ fun DeviceListScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // ── Shizuku status bar (task 5.3) ────────────────────────────────
+            // ── Shizuku status bar ───────────────────────────────────────────
             ShizukuStatusBar(
                 state = uiState.shizukuState,
                 onSetupClick = onNavigateToSetup
@@ -130,18 +161,18 @@ fun DeviceListScreen(
                     )
                 }
                 !uiState.bluetoothEnabled -> {
-                    // Bluetooth disabled empty state (task 5.4)
                     BluetoothDisabledContent()
                 }
                 uiState.devices.isEmpty() -> {
-                    // No paired devices empty state (task 5.4)
                     NoPairedDevicesContent()
                 }
                 else -> {
                     DeviceList(
                         devices = uiState.devices,
                         shizukuReady = uiState.shizukuState is ShizukuHelper.State.Ready,
-                        onToggleBlock = onToggleBlock
+                        watchLoadingAddress = uiState.watchLoadingAddress,
+                        onToggleBlock = onToggleBlock,
+                        onToggleWatch = onToggleWatch,
                     )
                 }
             }
@@ -211,14 +242,18 @@ private fun ShizukuStatusBar(
 private fun DeviceList(
     devices: List<DeviceListViewModel.DeviceUiModel>,
     shizukuReady: Boolean,
+    watchLoadingAddress: String?,
     onToggleBlock: (DeviceListViewModel.DeviceUiModel) -> Unit,
+    onToggleWatch: (DeviceListViewModel.DeviceUiModel) -> Unit,
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         items(devices, key = { it.address }) { device ->
             DeviceRow(
                 device = device,
                 shizukuReady = shizukuReady,
-                onToggle = { onToggleBlock(device) }
+                isWatchLoading = watchLoadingAddress == device.address,
+                onToggle = { onToggleBlock(device) },
+                onToggleWatch = { onToggleWatch(device) },
             )
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
         }
@@ -229,7 +264,9 @@ private fun DeviceList(
 private fun DeviceRow(
     device: DeviceListViewModel.DeviceUiModel,
     shizukuReady: Boolean,
+    isWatchLoading: Boolean,
     onToggle: () -> Unit,
+    onToggleWatch: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -243,7 +280,7 @@ private fun DeviceRow(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.weight(1f)
         ) {
-            // Bluetooth icon with connected indicator (task 5.2)
+            // Bluetooth icon with connected indicator
             Box {
                 Icon(
                     imageVector = Icons.Default.Bluetooth,
@@ -291,21 +328,47 @@ private fun DeviceRow(
             }
         }
 
-        // Block/allow toggle — disabled when Shizuku is not ready (task 5.5)
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Switch(
-                checked = device.isBlocked,
-                onCheckedChange = { onToggle() },
-                enabled = shizukuReady,
-            )
-            Text(
-                text = if (device.isBlocked) "Blocked" else "Allowed",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (device.isBlocked)
-                    MaterialTheme.colorScheme.error
-                else
-                    MaterialTheme.colorScheme.onSurfaceVariant
-            )
+        // Toggles column (right side)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Watch toggle — visible only for blocked devices on API 33+
+            if (device.isBlocked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Switch(
+                        checked = device.isWatched,
+                        onCheckedChange = { onToggleWatch() },
+                        // Disabled while an association request is in-flight for this device
+                        enabled = shizukuReady && !isWatchLoading,
+                    )
+                    Text(
+                        text = "Watch",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (device.isWatched)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Block/allow toggle — disabled when Shizuku is not ready
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Switch(
+                    checked = device.isBlocked,
+                    onCheckedChange = { onToggle() },
+                    enabled = shizukuReady,
+                )
+                Text(
+                    text = if (device.isBlocked) "Blocked" else "Allowed",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (device.isBlocked)
+                        MaterialTheme.colorScheme.error
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

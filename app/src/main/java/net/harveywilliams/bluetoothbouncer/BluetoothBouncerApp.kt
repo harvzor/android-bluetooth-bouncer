@@ -4,6 +4,7 @@ import android.app.Application
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import net.harveywilliams.bluetoothbouncer.data.AppDatabase
+import net.harveywilliams.bluetoothbouncer.notification.WatchNotificationHelper
 import net.harveywilliams.bluetoothbouncer.shizuku.ShizukuHelper
 
 /**
@@ -26,6 +27,11 @@ class BluetoothBouncerApp : Application() {
         extraBufferCapacity = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
+
+    override fun onCreate() {
+        super.onCreate()
+        WatchNotificationHelper.createNotificationChannel(this)
+    }
 
     override fun onTerminate() {
         super.onTerminate()
