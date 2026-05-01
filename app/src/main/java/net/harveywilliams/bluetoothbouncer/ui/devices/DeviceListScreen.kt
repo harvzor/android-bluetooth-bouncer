@@ -371,6 +371,12 @@ private fun DeviceRow(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                } else if (device.lastDetectedSecondsAgo != null) {
+                    Text(
+                        text = "Detected ${device.lastDetectedSecondsAgo}s ago",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
