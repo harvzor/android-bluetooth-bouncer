@@ -27,7 +27,6 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -335,24 +334,17 @@ private fun DeviceRow(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.weight(1f)
         ) {
-            // Bluetooth icon with connected indicator
-            Box {
-                Icon(
-                    imageVector = Icons.Default.Bluetooth,
-                    contentDescription = null,
-                    tint = if (device.isConnected)
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(28.dp)
-                )
-                if (device.isConnected) {
-                    Badge(
-                        modifier = Modifier.align(Alignment.TopEnd),
-                        containerColor = Color(0xFF4CAF50)
-                    ) { }
-                }
-            }
+            // Bluetooth icon
+            Icon(
+                imageVector = Icons.Default.Bluetooth,
+                contentDescription = null,
+                tint = when {
+                    device.isConnected -> Color(0xFF87CEEB)
+                    device.isDetected || device.lastDetectedSecondsAgo != null -> Color(0xFFE8A06C)
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier.size(28.dp)
+            )
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -371,25 +363,25 @@ private fun DeviceRow(
                     Text(
                         text = "Temporarily connected",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFFFF9800)
+                        color = Color(0xFF87CEEB)
                     )
                 } else if (device.isConnected) {
                     Text(
                         text = "Connected",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF4CAF50)
+                        color = Color(0xFF87CEEB)
                     )
                 } else if (device.isDetected) {
                     Text(
                         text = "Detected",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Color(0xFFE8A06C)
                     )
                 } else if (device.lastDetectedSecondsAgo != null) {
                     Text(
                         text = "Detected ${device.lastDetectedSecondsAgo}s ago",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Color(0xFFE8A06C)
                     )
                 }
             }
