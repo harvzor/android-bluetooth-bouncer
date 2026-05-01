@@ -72,12 +72,14 @@ class DeviceListViewModel(
         val isLoading: Boolean = true,
         val toggleError: String? = null,
         /**
-         * MAC address of the device whose Watch toggle is currently in-flight
+         * MAC address of the device whose Alert toggle is currently in-flight
          * (association dialog shown or request pending). Used to grey out the toggle.
          */
         val watchLoadingAddress: String? = null,
-        /** Message to show in a Snackbar when a Watch operation fails or is cancelled. */
+        /** Message to show in a Snackbar when an Alert operation fails or is cancelled. */
         val watchError: String? = null,
+        /** Message to show in a Snackbar when Alert is successfully enabled. */
+        val watchSuccess: String? = null,
     )
 
     // ── State ─────────────────────────────────────────────────────────────────
@@ -256,7 +258,7 @@ class DeviceListViewModel(
     }
 
     /**
-     * Toggles the Watch state for a blocked device (API 33+ only).
+     * Toggles the Alert state for a blocked device (API 33+ only).
      *
      * Enabling: initiates a CDM association via [DeviceWatchManager.associate]. A pending
      * [IntentSender] is emitted via [watchAssociationIntent] for the UI to launch.
@@ -267,14 +269,14 @@ class DeviceListViewModel(
         val manager = deviceWatchManager ?: return
 
         if (device.isWatched) {
-            // Disable watch
+            // Disable watch (Alert off)
             viewModelScope.launch {
                 val entity = blockedDeviceDao.getDeviceByMac(device.address) ?: return@launch
                 val assocId = entity.cdmAssociationId ?: return@launch
                 manager.disableWatch(device.address, assocId)
             }
         } else {
-            // Enable watch — begin association flow
+            // Enable watch (Alert on) — begin association flow
             _uiState.update { it.copy(watchLoadingAddress = device.address) }
             pendingWatchDevice = device
 
@@ -287,10 +289,13 @@ class DeviceListViewModel(
                     viewModelScope.launch {
                         try {
                             manager.enableWatch(device.address, associationInfo.id)
+                            _uiState.update {
+                                it.copy(watchSuccess = "You'll get a notification when this device is nearby. Tap it to temporarily allow a connection.")
+                            }
                         } catch (e: Exception) {
                             Log.e(TAG, "enableWatch failed for ${device.address}", e)
                             _uiState.update {
-                                it.copy(watchError = "Failed to enable Watch: ${e.message}")
+                                it.copy(watchError = "Failed to enable Alert: ${e.message}")
                             }
                         } finally {
                             _uiState.update { it.copy(watchLoadingAddress = null) }
@@ -327,6 +332,10 @@ class DeviceListViewModel(
 
     fun clearWatchError() {
         _uiState.update { it.copy(watchError = null) }
+    }
+
+    fun clearWatchSuccess() {
+        _uiState.update { it.copy(watchSuccess = null) }
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
