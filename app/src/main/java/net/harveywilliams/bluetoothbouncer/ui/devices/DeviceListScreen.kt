@@ -441,15 +441,26 @@ private fun DeviceRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Connect / Disconnect button — API 33+ only
-            // Visibility rules:
-            //   - Temp-allowed + disconnected: neither (auto-reverting)
-            //   - Any + connected: Disconnect
-            //   - Blocked + disconnected: Connect
-            //   - Allowed + disconnected: Connect
+            // Visibility rules (in priority order):
+            //   1. Connect in-flight: "Connecting..." (disabled) — takes priority over all
+            //   2. Connected: Disconnect
+            //   3. Not connected, not temp-allowed: Connect
+            //   4. Temp-allowed + disconnected: neither (auto-reverting)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                val showConnect = !device.isConnected && !device.isTemporarilyAllowed
                 val showDisconnect = device.isConnected
+                val showConnect = !device.isConnected && !device.isTemporarilyAllowed
                 when {
+                    isConnectLoading -> {
+                        TextButton(
+                            onClick = {},
+                            enabled = false,
+                        ) {
+                            Text(
+                                text = "Connecting...",
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+                    }
                     showDisconnect -> {
                         TextButton(
                             onClick = onDisconnect,

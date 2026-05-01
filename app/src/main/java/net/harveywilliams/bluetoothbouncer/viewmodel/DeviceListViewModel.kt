@@ -23,6 +23,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,8 +32,10 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import net.harveywilliams.bluetoothbouncer.BluetoothBouncerApp
 import net.harveywilliams.bluetoothbouncer.data.BlockedDeviceDao
 import net.harveywilliams.bluetoothbouncer.data.BlockedDeviceEntity
@@ -345,6 +348,10 @@ class DeviceListViewModel(
      *  - Allowed device: active profile connect, no policy change
      *
      * API 33+ only — callers must guard with the same check.
+     *
+     * After a successful Shizuku IPC call, [connectLoadingAddress] remains set and
+     * [awaitConnectionOrTimeout] takes over: it observes [_uiState] for [DeviceUiModel.isConnected]
+     * and clears the loading state once confirmed or after a 5-second timeout (with rollback).
      */
     fun connectDevice(device: DeviceUiModel) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
@@ -373,16 +380,16 @@ class DeviceListViewModel(
                                 val result = shizukuHelper.setConnectionPolicy(device.address, ShizukuHelper.POLICY_ALLOWED)
                                 if (result.isSuccess) {
                                     blockedDeviceDao.updateIsTemporarilyAllowed(device.address, true)
+                                    // IPC succeeded — wait for OS connection (clears loading on its own)
+                                    awaitConnectionOrTimeout(device.address, device.name, isBlockedConnect = true)
                                 } else {
                                     val msg = "Failed to connect ${device.name}"
                                     Log.w(TAG, "$msg: ${result.exceptionOrNull()?.message}")
-                                    _uiState.update { it.copy(toggleError = msg) }
+                                    _uiState.update { it.copy(toggleError = msg, connectLoadingAddress = null) }
                                 }
                             } catch (e: Exception) {
                                 Log.e(TAG, "connectDevice blocked path failed for ${device.address}", e)
-                                _uiState.update { it.copy(toggleError = "Failed to connect ${device.name}") }
-                            } finally {
-                                _uiState.update { it.copy(connectLoadingAddress = null) }
+                                _uiState.update { it.copy(toggleError = "Failed to connect ${device.name}", connectLoadingAddress = null) }
                             }
                         }
                     },
@@ -397,18 +404,58 @@ class DeviceListViewModel(
             viewModelScope.launch {
                 try {
                     val result = shizukuHelper.connectDevice(device.address)
-                    if (result.isFailure) {
+                    if (result.isSuccess) {
+                        // IPC succeeded — wait for OS connection (clears loading on its own)
+                        awaitConnectionOrTimeout(device.address, device.name, isBlockedConnect = false)
+                    } else {
                         val msg = "Failed to connect ${device.name}"
                         Log.w(TAG, "$msg: ${result.exceptionOrNull()?.message}")
-                        _uiState.update { it.copy(toggleError = msg) }
+                        _uiState.update { it.copy(toggleError = msg, connectLoadingAddress = null) }
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "connectDevice allowed path failed for ${device.address}", e)
-                    _uiState.update { it.copy(toggleError = "Failed to connect ${device.name}") }
-                } finally {
-                    _uiState.update { it.copy(connectLoadingAddress = null) }
+                    _uiState.update { it.copy(toggleError = "Failed to connect ${device.name}", connectLoadingAddress = null) }
                 }
             }
+        }
+    }
+
+    /**
+     * Suspends until the device at [address] becomes connected (as observed via [_uiState]),
+     * or until a 5-second timeout elapses.
+     *
+     * On success: clears [UiState.connectLoadingAddress].
+     * On timeout:
+     *   - If [isBlockedConnect], reverts `POLICY_FORBIDDEN` and clears `isTemporarilyAllowed`.
+     *   - Sets [UiState.toggleError] to a "Connection timed out" message.
+     *   - Clears [UiState.connectLoadingAddress].
+     *
+     * Always called from an existing coroutine — never launches its own scope.
+     */
+    private suspend fun awaitConnectionOrTimeout(
+        address: String,
+        deviceName: String,
+        isBlockedConnect: Boolean,
+    ) {
+        try {
+            withTimeout(CONNECT_TIMEOUT_MS) {
+                _uiState
+                    .map { s -> s.devices.any { it.address == address && it.isConnected } }
+                    .first { it }
+            }
+            // Device confirmed connected — clear loading
+            _uiState.update { it.copy(connectLoadingAddress = null) }
+        } catch (e: TimeoutCancellationException) {
+            Log.w(TAG, "awaitConnectionOrTimeout: timed out waiting for $address to connect")
+            if (isBlockedConnect) {
+                try {
+                    shizukuHelper.setConnectionPolicy(address, ShizukuHelper.POLICY_FORBIDDEN)
+                    blockedDeviceDao.updateIsTemporarilyAllowed(address, false)
+                } catch (re: Exception) {
+                    Log.w(TAG, "awaitConnectionOrTimeout: rollback failed for $address", re)
+                }
+            }
+            _uiState.update { it.copy(toggleError = "Connection timed out for $deviceName", connectLoadingAddress = null) }
         }
     }
 
@@ -709,6 +756,10 @@ class DeviceListViewModel(
 
     companion object {
         private const val TAG = "DeviceListViewModel"
+
+        /** How long to wait for [DeviceUiModel.isConnected] to become true after a successful
+         *  Shizuku IPC call before treating the attempt as failed and rolling back. */
+        private const val CONNECT_TIMEOUT_MS = 5_000L
 
         fun factory(
             shizukuHelper: ShizukuHelper,
