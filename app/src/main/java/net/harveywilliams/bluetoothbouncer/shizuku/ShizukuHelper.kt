@@ -9,6 +9,8 @@ import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
 import net.harveywilliams.bluetoothbouncer.BuildConfig
 import net.harveywilliams.bluetoothbouncer.IBluetoothBouncerUserService
 import rikka.shizuku.Shizuku
@@ -121,8 +123,25 @@ class ShizukuHelper(private val context: Context) {
      * Call setConnectionPolicy on the UserService.
      * Returns a [Result] wrapping the int[] from the service,
      * or a failure if the service is unavailable.
+     *
+     * If [userService] is null but Shizuku is running and permission is granted,
+     * the UserService bind is likely still in progress (common on cold start).
+     * In that case this function suspends and waits up to [BIND_TIMEOUT_MS] for
+     * [State.Ready] before proceeding, rather than failing immediately.
      */
     suspend fun setConnectionPolicy(macAddress: String, policy: Int): Result<IntArray> {
+        // If the UserService isn't ready yet but Shizuku is running and we have
+        // permission, binding is in progress — wait for it rather than failing.
+        if (userService == null && isShizukuRunning() && hasPermission()) {
+            try {
+                withTimeout(BIND_TIMEOUT_MS) {
+                    _state.first { it is State.Ready }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Timed out or interrupted waiting for UserService to bind", e)
+            }
+        }
+
         val service = userService
             ?: return Result.failure(IllegalStateException("Shizuku UserService is not available"))
         return try {
@@ -206,6 +225,9 @@ class ShizukuHelper(private val context: Context) {
         private const val TAG = "ShizukuHelper"
         private const val SHIZUKU_PACKAGE = "moe.shizuku.privileged.api"
         private const val PERMISSION_REQUEST_CODE = 1001
+
+        /** Milliseconds to wait for the UserService to bind on cold start before giving up. */
+        private const val BIND_TIMEOUT_MS = 10_000L
 
         /** BluetoothProfile.CONNECTION_POLICY_FORBIDDEN */
         const val POLICY_FORBIDDEN = 0

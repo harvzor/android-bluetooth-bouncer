@@ -37,6 +37,10 @@ class BluetoothBouncerApp : Application() {
     override fun onCreate() {
         super.onCreate()
         WatchNotificationHelper.createNotificationChannel(this)
+        // Trigger lazy init immediately so Shizuku binding starts at process launch.
+        // This narrows the race window where setConnectionPolicy() is called before
+        // the UserService binder is delivered (e.g. notification action on cold start).
+        shizukuHelper
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             cleanUpStaleCdmAssociations()
         }

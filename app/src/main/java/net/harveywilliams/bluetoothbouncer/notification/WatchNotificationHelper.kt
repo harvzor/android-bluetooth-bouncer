@@ -91,7 +91,7 @@ object WatchNotificationHelper {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_bluetooth)
             .setContentTitle(deviceName)
-            .setContentText("Could not allow — Shizuku is not running")
+            .setContentText("Could not allow — Shizuku unavailable")
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
