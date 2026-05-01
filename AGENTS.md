@@ -1,15 +1,10 @@
 # Project Context
 
 ## Android Development Environment
-- **Android SDK**: `C:\Users\Harve\AppData\Local\Android\Sdk`
-- **Android Studio**: `C:\Program Files\Android\Android Studio`
-- **Platform installed**: android-36 (Android 16)
-- **Build Tools**: 36.1.0
+- **Android SDK**: Install via Android Studio; locate your SDK path in *SDK Manager → Android SDK Location*
 - **Command-line tools**: Installed at `<SDK>/cmdline-tools/latest/`
-- **Emulator AVD**: `Pixel_7_API_34` (API 34 / Android 14 / Google APIs / x86_64)
-  - Launch: `C:\Users\Harve\AppData\Local\Android\Sdk\emulator\emulator.exe -avd Pixel_7_API_34`
-- **ANDROID_HOME** is NOT set as an environment variable — use the path directly
-- **Physical test device**: Available (user's phone) — required for Bluetooth/Shizuku testing
+- **Emulator AVD**: An x86_64 AVD (API 34, Google APIs) is used for UI iteration — create one via AVD Manager if needed
+- **Physical test device**: Required for Bluetooth/Shizuku testing — the emulator has no real Bluetooth hardware
 
 ## App Details
 - **Package**: `net.harveywilliams.bluetoothbouncer`
@@ -21,10 +16,10 @@
 - **README.md** must be kept in sync with the app's features. When adding, removing, or changing user-facing functionality, update `README.md` to reflect the current state of the app.
 
 ## Build & Tooling
-- **Gradle wrapper**: No system-wide Gradle install. The wrapper (`gradlew.bat` + `gradle-wrapper.jar`) is checked in; `gradle-wrapper.jar` was sourced from `C:\Data\Dev\random\duali-td\android\build\gradle\wrapper\`
-- **`ANDROID_HOME` per shell**: Set `$env:ANDROID_HOME = "C:\Users\Harve\AppData\Local\Android\Sdk"` before every `gradlew.bat` invocation
+- **Gradle wrapper**: No system-wide Gradle install. The wrapper (`gradlew.bat` + `gradle-wrapper.jar`) is checked in; regenerate with `gradlew.bat wrapper --gradle-version <version>` if needed
+- **`ANDROID_HOME` per shell**: Set `$env:ANDROID_HOME = "<your SDK path>"` before every `gradlew.bat` invocation
 - **AGP / compileSdk warning**: AGP 8.5.2 warns about compileSdk 35 — this is cosmetic; suppress with `android.suppressUnsupportedCompileSdk=35` in `gradle.properties` or upgrade AGP when available
-- **Java**: Temurin JDK 17.0.17 is installed and on PATH
+- **Java**: JDK 17 is required and must be on PATH
 
 ## Android API Gotchas
 - **`BluetoothProfile.HID_HOST`**: Not in the compile-time SDK — use integer literal `4` directly
