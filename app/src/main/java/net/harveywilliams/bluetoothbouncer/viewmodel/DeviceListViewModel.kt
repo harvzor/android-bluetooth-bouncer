@@ -47,6 +47,8 @@ class DeviceListViewModel(
 
     // ── UI model ─────────────────────────────────────────────────────────────
 
+    enum class DeviceSection { CONNECTED, DETECTED, BLOCKED, ALLOWED }
+
     data class DeviceUiModel(
         val address: String,
         val name: String,
@@ -62,6 +64,8 @@ class DeviceListViewModel(
          * if there is no recent detection to show. Counts up from 0 to 29; null after 30 seconds.
          */
         val lastDetectedSecondsAgo: Int? = null,
+        /** Which list section this device belongs to. Determined by most-active state. */
+        val section: DeviceSection = DeviceSection.ALLOWED,
     )
 
     data class UiState(
@@ -483,17 +487,31 @@ class DeviceListViewModel(
             val secondsAgo = if (stamp != null) {
                 ((SystemClock.elapsedRealtime() - stamp) / 1000L).toInt().coerceAtMost(29)
             } else null
+            val isConn = device.address in connectedAddresses
+            val isDet = device.address in detectedAddresses
+            val isRecent = secondsAgo != null
+            val section = when {
+                isConn -> DeviceSection.CONNECTED
+                isDet || isRecent -> DeviceSection.DETECTED
+                device.address in blockedAddresses -> DeviceSection.BLOCKED
+                else -> DeviceSection.ALLOWED
+            }
             DeviceUiModel(
                 address = device.address,
                 name = device.name ?: device.address,
                 isBlocked = device.address in blockedAddresses,
-                isConnected = device.address in connectedAddresses,
-                isDetected = device.address in detectedAddresses,
+                isConnected = isConn,
+                isDetected = isDet,
                 isWatched = device.address in watchedAddresses,
                 isTemporarilyAllowed = device.address in temporarilyAllowedAddresses,
                 lastDetectedSecondsAgo = secondsAgo,
+                section = section,
             )
-        }.sortedWith(compareByDescending<DeviceUiModel> { it.isConnected }.thenByDescending { it.isDetected }.thenBy { it.name })
+        }.sortedWith(
+            compareBy<DeviceUiModel> { it.section.ordinal }
+                .thenByDescending { it.isDetected }
+                .thenBy { it.name }
+        )
 
         _uiState.update { it.copy(bluetoothEnabled = true, devices = devices, isLoading = false) }
 
@@ -530,7 +548,15 @@ class DeviceListViewModel(
                         val secondsAgo = if (stamp != null) {
                             ((now - stamp) / 1000L).toInt().coerceAtMost(29)
                         } else null
-                        device.copy(lastDetectedSecondsAgo = secondsAgo)
+                        // Recompute section: a decaying device (secondsAgo != null) must stay
+                        // in DETECTED for the full window, not drop to BLOCKED/ALLOWED.
+                        val section = when {
+                            device.isConnected -> DeviceSection.CONNECTED
+                            device.isDetected || secondsAgo != null -> DeviceSection.DETECTED
+                            device.isBlocked -> DeviceSection.BLOCKED
+                            else -> DeviceSection.ALLOWED
+                        }
+                        device.copy(lastDetectedSecondsAgo = secondsAgo, section = section)
                     })
                 }
             }

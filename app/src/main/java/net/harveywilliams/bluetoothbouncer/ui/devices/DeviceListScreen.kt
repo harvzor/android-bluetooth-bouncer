@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothDisabled
@@ -293,6 +292,18 @@ private fun ShizukuStatusBar(
 // ── Device list ───────────────────────────────────────────────────────────────
 
 @Composable
+private fun SectionHeader(title: String) {
+    Text(
+        text = title.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
+    )
+}
+
+@Composable
 private fun DeviceList(
     devices: List<DeviceListViewModel.DeviceUiModel>,
     shizukuReady: Boolean,
@@ -301,15 +312,34 @@ private fun DeviceList(
     onToggleWatch: (DeviceListViewModel.DeviceUiModel) -> Unit,
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(devices, key = { it.address }) { device ->
-            DeviceRow(
-                device = device,
-                shizukuReady = shizukuReady,
-                isWatchLoading = watchLoadingAddress == device.address,
-                onToggle = { onToggleBlock(device) },
-                onToggleWatch = { onToggleWatch(device) },
-            )
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+        var lastSection: DeviceListViewModel.DeviceSection? = null
+        devices.forEachIndexed { index, device ->
+            if (device.section != lastSection) {
+                val sectionTitle = when (device.section) {
+                    DeviceListViewModel.DeviceSection.CONNECTED -> "Connected"
+                    DeviceListViewModel.DeviceSection.DETECTED -> "Detected"
+                    DeviceListViewModel.DeviceSection.BLOCKED -> "Blocked"
+                    DeviceListViewModel.DeviceSection.ALLOWED -> "Allowed"
+                }
+                item(key = "header_${device.section.name}") {
+                    SectionHeader(title = sectionTitle)
+                }
+                lastSection = device.section
+            }
+            item(key = device.address) {
+                DeviceRow(
+                    device = device,
+                    shizukuReady = shizukuReady,
+                    isWatchLoading = watchLoadingAddress == device.address,
+                    onToggle = { onToggleBlock(device) },
+                    onToggleWatch = { onToggleWatch(device) },
+                )
+                // Divider between items within the same section; omit after last item in section
+                val nextDevice = devices.getOrNull(index + 1)
+                if (nextDevice != null && nextDevice.section == device.section) {
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                }
+            }
         }
     }
 }
@@ -379,7 +409,7 @@ private fun DeviceRow(
                     )
                 } else if (device.lastDetectedSecondsAgo != null) {
                     Text(
-                        text = "Detected ${device.lastDetectedSecondsAgo}s ago",
+                        text = "Detected recently",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFFE8A06C)
                     )

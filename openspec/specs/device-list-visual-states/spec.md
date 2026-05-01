@@ -23,7 +23,7 @@ The "Connected" and "Temporarily connected" status labels SHALL be rendered in B
 - **THEN** the "Temporarily connected" text is colored `Color(0xFF0082FC)`
 
 ### Requirement: Detected status text is hardcoded salmon-orange
-The "Detected" and "Detected Xs ago" status labels SHALL be rendered in a fixed salmon-orange color (`#E8A06C`), independent of the dynamic theme.
+The "Detected" and "Detected recently" status labels SHALL be rendered in a fixed salmon-orange color (`#E8A06C`), independent of the dynamic theme.
 
 #### Scenario: Detected label color
 - **WHEN** a device has `isDetected = true` and `isConnected = false`
@@ -31,4 +31,4 @@ The "Detected" and "Detected Xs ago" status labels SHALL be rendered in a fixed 
 
 #### Scenario: Stale detection label color
 - **WHEN** a device has a non-null `lastDetectedSecondsAgo` and `isConnected = false`
-- **THEN** the "Detected Xs ago" text is colored `Color(0xFFE8A06C)`
+- **THEN** the "Detected recently" text is colored `Color(0xFFE8A06C)`
