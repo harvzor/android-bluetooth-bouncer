@@ -275,12 +275,7 @@ class DeviceListViewModel(
                     }
                 },
                 onFailure = { _ ->
-                    _uiState.update {
-                        it.copy(
-                            watchLoadingAddress = null,
-                            watchError = "Device not found nearby. Try again when it's in Bluetooth range.",
-                        )
-                    }
+                    _uiState.update { it.copy(watchLoadingAddress = null) }
                     pendingWatchDevice = null
                     _watchAssociationIntent.value = null
                 },
@@ -296,12 +291,7 @@ class DeviceListViewModel(
     fun onWatchAssociationResult(resultCode: Int) {
         _watchAssociationIntent.value = null
         if (resultCode != Activity.RESULT_OK) {
-            _uiState.update {
-                it.copy(
-                    watchLoadingAddress = null,
-                    watchError = "Device not found nearby. Try again when it's in Bluetooth range.",
-                )
-            }
+            _uiState.update { it.copy(watchLoadingAddress = null) }
             pendingWatchDevice = null
         }
         // RESULT_OK: onAssociationCreated already fired and is handled by the onSuccess callback.
