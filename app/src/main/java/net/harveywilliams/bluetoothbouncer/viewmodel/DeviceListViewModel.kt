@@ -15,12 +15,15 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.IntentSender
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -54,6 +57,11 @@ class DeviceListViewModel(
         val isWatched: Boolean = false,
         /** True when the device was allowed temporarily via the notification action. */
         val isTemporarilyAllowed: Boolean = false,
+        /**
+         * Seconds since the device was last detected (ACL dropped after being detected), or null
+         * if there is no recent detection to show. Counts up from 0 to 29; null after 30 seconds.
+         */
+        val lastDetectedSecondsAgo: Int? = null,
     )
 
     data class UiState(
@@ -118,6 +126,20 @@ class DeviceListViewModel(
      */
     @Volatile private var a2dpProxy: BluetoothA2dp? = null
     @Volatile private var headsetProxy: BluetoothHeadset? = null
+
+    /**
+     * In-memory map from device address to the [SystemClock.elapsedRealtime] timestamp at which
+     * the device last dropped out of the detected state. Entries are evicted after 30 seconds by
+     * the decay ticker or when the device is detected again.
+     */
+    private val lastDetectedTimes: MutableMap<String, Long> = mutableMapOf()
+
+    /** Snapshot of detected addresses from the previous [refreshDeviceList] call, used to
+     *  detect ACL-drop transitions. */
+    private var previousDetectedAddresses: Set<String> = emptySet()
+
+    /** Running decay ticker coroutine, or null when no recent-detection timestamps are active. */
+    private var decayTickerJob: Job? = null
 
     init {
         // Sole long-lived collector on the Room Flow — observes Shizuku state and the
@@ -397,6 +419,8 @@ class DeviceListViewModel(
     private fun refreshDeviceList(blockedDevices: List<BlockedDeviceEntity>) {
         val adapter = btAdapter
         if (adapter == null || !adapter.isEnabled) {
+            lastDetectedTimes.clear()
+            previousDetectedAddresses = emptySet()
             _uiState.update { it.copy(bluetoothEnabled = false, devices = emptyList(), isLoading = false) }
             return
         }
@@ -432,7 +456,24 @@ class DeviceListViewModel(
         // paired devices that have an ACL link without a profile connection.
         val detectedAddresses = aclConnected - connectedAddresses
 
+        // ── Detection-decay transition tracking ──────────────────────────────
+        // Addresses that were detected last refresh but are no longer detected: stamp them.
+        val justLost = previousDetectedAddresses - detectedAddresses
+        val now = SystemClock.elapsedRealtime()
+        for (addr in justLost) {
+            lastDetectedTimes[addr] = now
+        }
+        // Addresses that are now detected again: clear any lingering "ago" timestamp.
+        for (addr in detectedAddresses) {
+            lastDetectedTimes.remove(addr)
+        }
+        previousDetectedAddresses = detectedAddresses
+
         val devices = adapter.bondedDevices.orEmpty().map { device ->
+            val stamp = lastDetectedTimes[device.address]
+            val secondsAgo = if (stamp != null) {
+                ((SystemClock.elapsedRealtime() - stamp) / 1000L).toInt().coerceAtMost(29)
+            } else null
             DeviceUiModel(
                 address = device.address,
                 name = device.name ?: device.address,
@@ -441,10 +482,50 @@ class DeviceListViewModel(
                 isDetected = device.address in detectedAddresses,
                 isWatched = device.address in watchedAddresses,
                 isTemporarilyAllowed = device.address in temporarilyAllowedAddresses,
+                lastDetectedSecondsAgo = secondsAgo,
             )
         }.sortedWith(compareByDescending<DeviceUiModel> { it.isConnected }.thenByDescending { it.isDetected }.thenBy { it.name })
 
         _uiState.update { it.copy(bluetoothEnabled = true, devices = devices, isLoading = false) }
+
+        if (lastDetectedTimes.isNotEmpty()) startDecayTickerIfNeeded()
+    }
+
+    /**
+     * Starts a 1-second decay ticker if one is not already running.
+     *
+     * Each tick:
+     * 1. Evicts [lastDetectedTimes] entries that are 30+ seconds old.
+     * 2. Remaps the current device list, recomputing [DeviceUiModel.lastDetectedSecondsAgo]
+     *    from the remaining timestamps.
+     * 3. Pushes the updated list to [_uiState].
+     *
+     * The loop exits naturally when [lastDetectedTimes] is empty — no Bluetooth API calls,
+     * Room queries, or reflection are performed during ticking.
+     */
+    private fun startDecayTickerIfNeeded() {
+        if (decayTickerJob?.isActive == true) return
+        decayTickerJob = viewModelScope.launch {
+            while (lastDetectedTimes.isNotEmpty()) {
+                delay(1_000L)
+                val now = SystemClock.elapsedRealtime()
+                // Evict expired entries
+                val expired = lastDetectedTimes.entries
+                    .filter { (_, stamp) -> now - stamp >= 30_000L }
+                    .map { it.key }
+                for (addr in expired) lastDetectedTimes.remove(addr)
+                // Remap device list in place — no Bluetooth calls
+                _uiState.update { state ->
+                    state.copy(devices = state.devices.map { device ->
+                        val stamp = lastDetectedTimes[device.address]
+                        val secondsAgo = if (stamp != null) {
+                            ((now - stamp) / 1000L).toInt().coerceAtMost(29)
+                        } else null
+                        device.copy(lastDetectedSecondsAgo = secondsAgo)
+                    })
+                }
+            }
+        }
     }
 
     /**
