@@ -52,6 +52,8 @@ class DeviceListViewModel(
         val isDetected: Boolean,
         /** True when the device has an active CDM association for background presence monitoring. */
         val isWatched: Boolean = false,
+        /** True when the device was allowed temporarily via the notification action. */
+        val isTemporarilyAllowed: Boolean = false,
     )
 
     data class UiState(
@@ -335,6 +337,8 @@ class DeviceListViewModel(
             addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
             addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
             addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
+            addAction(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED)
+            addAction(BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED)
         }
 
         // RECEIVER_EXPORTED is required so the Bluetooth system service (a different package)
@@ -405,6 +409,12 @@ class DeviceListViewModel(
             .map { it.macAddress }
             .toSet()
 
+        // Temporarily-allowed device addresses
+        val temporarilyAllowedAddresses = blockedDevices
+            .filter { it.isTemporarilyAllowed }
+            .map { it.macAddress }
+            .toSet()
+
         // Profile-level connected addresses — not affected by CONNECTION_POLICY_FORBIDDEN
         // maintaining an ACL link after all profiles are disconnected.
         val a2dpConnected = a2dpProxy?.connectedDevices.orEmpty().map { it.address }.toSet()
@@ -430,6 +440,7 @@ class DeviceListViewModel(
                 isConnected = device.address in connectedAddresses,
                 isDetected = device.address in detectedAddresses,
                 isWatched = device.address in watchedAddresses,
+                isTemporarilyAllowed = device.address in temporarilyAllowedAddresses,
             )
         }.sortedWith(compareByDescending<DeviceUiModel> { it.isConnected }.thenByDescending { it.isDetected }.thenBy { it.name })
 

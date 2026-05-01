@@ -353,7 +353,13 @@ private fun DeviceRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (device.isConnected) {
+                if (device.isConnected && device.isTemporarilyAllowed) {
+                    Text(
+                        text = "Temporarily connected",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFFF9800)
+                    )
+                } else if (device.isConnected) {
                     Text(
                         text = "Connected",
                         style = MaterialTheme.typography.labelSmall,
