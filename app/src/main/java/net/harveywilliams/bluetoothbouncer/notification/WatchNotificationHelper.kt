@@ -43,7 +43,7 @@ object WatchNotificationHelper {
             "Device Watch",
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "Alerts when a watched blocked device comes into Bluetooth range"
+            description = "Alerts when a blocked device with Alert enabled comes into Bluetooth range"
         }
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.createNotificationChannel(channel)

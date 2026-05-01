@@ -36,6 +36,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -68,6 +69,7 @@ fun DeviceListScreen(
     watchAssociationIntent: IntentSender?,
     onWatchAssociationResult: (Int) -> Unit,
     onClearWatchError: () -> Unit,
+    onClearWatchSuccess: () -> Unit,
     onBluetoothPermissionResult: (Boolean) -> Unit,
     onNavigateToSetup: () -> Unit,
     onClearToggleError: () -> Unit,
@@ -78,7 +80,7 @@ fun DeviceListScreen(
     var showPermissionRationale by remember { mutableStateOf(false) }
     var notificationPermissionDenied by remember { mutableStateOf(false) }
 
-    // Device waiting on notification permission before the Watch association can proceed.
+    // Device waiting on notification permission before the Alert association can proceed.
     var pendingWatchDevice by remember { mutableStateOf<DeviceListViewModel.DeviceUiModel?>(null) }
 
     // ── Permission launcher (Bluetooth) ──────────────────────────────────────
@@ -89,7 +91,7 @@ fun DeviceListScreen(
         if (!granted) showPermissionRationale = true
     }
 
-    // ── POST_NOTIFICATIONS permission launcher (API 33+, required for Watch) ─
+    // ── POST_NOTIFICATIONS permission launcher (API 33+, required for Alert) ─
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -102,14 +104,14 @@ fun DeviceListScreen(
         }
     }
 
-    // ── CDM association launcher (Watch toggle, API 33+) ─────────────────────
+    // ── CDM association launcher (Alert toggle, API 33+) ─────────────────────
     val watchAssociationLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
         onWatchAssociationResult(result.resultCode)
     }
 
-    // Wrapper that gates Watch-enable on POST_NOTIFICATIONS permission.
+    // Wrapper that gates Alert-enable on POST_NOTIFICATIONS permission.
     val safeToggleWatch: (DeviceListViewModel.DeviceUiModel) -> Unit = { device ->
         if (!device.isWatched && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -121,10 +123,10 @@ fun DeviceListScreen(
         }
     }
 
-    // Show snackbar when notification permission was denied while trying to enable Watch.
+    // Show snackbar when notification permission was denied while trying to enable Alert.
     LaunchedEffect(notificationPermissionDenied) {
         if (notificationPermissionDenied) {
-            snackbarHostState.showSnackbar("Notification permission denied — Watch won't be able to alert you when the device is nearby")
+            snackbarHostState.showSnackbar("Notification permission denied — Alert won't be able to notify you when the device is nearby")
             notificationPermissionDenied = false
         }
     }
@@ -153,11 +155,23 @@ fun DeviceListScreen(
         }
     }
 
-    // Show Watch operation errors / cancellations as a snackbar
+    // Show Alert operation errors / cancellations as a snackbar
     LaunchedEffect(uiState.watchError) {
         uiState.watchError?.let {
             snackbarHostState.showSnackbar(it)
             onClearWatchError()
+        }
+    }
+
+    // Show confirmation snackbar when Alert is successfully enabled
+    LaunchedEffect(uiState.watchSuccess) {
+        uiState.watchSuccess?.let {
+            snackbarHostState.showSnackbar(
+                message = it,
+                actionLabel = "Dismiss",
+                duration = SnackbarDuration.Indefinite,
+            )
+            onClearWatchSuccess()
         }
     }
 
@@ -380,7 +394,7 @@ private fun DeviceRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Watch toggle — visible only for blocked devices on API 33+
+            // Alert toggle — visible only for blocked devices on API 33+
             if (device.isBlocked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Switch(
@@ -390,7 +404,7 @@ private fun DeviceRow(
                         enabled = shizukuReady && !isWatchLoading,
                     )
                     Text(
-                        text = "Watch",
+                        text = "Alert",
                         style = MaterialTheme.typography.labelSmall,
                         color = if (device.isWatched)
                             MaterialTheme.colorScheme.primary

@@ -49,6 +49,7 @@ fun AppNavigation(
                 watchAssociationIntent = watchAssociationIntent,
                 onWatchAssociationResult = viewModel::onWatchAssociationResult,
                 onClearWatchError = viewModel::clearWatchError,
+                onClearWatchSuccess = viewModel::clearWatchSuccess,
                 onBluetoothPermissionResult = viewModel::onBluetoothPermissionResult,
                 onNavigateToSetup = { navController.navigate(Routes.SHIZUKU_SETUP) },
                 onClearToggleError = viewModel::clearToggleError,
