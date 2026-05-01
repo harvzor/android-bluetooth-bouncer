@@ -76,6 +76,7 @@ object WatchNotificationHelper {
             .setContentText("Nearby — tap to allow for this session")
             .addAction(0, "Allow temporarily", allowPendingIntent)
             .setAutoCancel(false)
+            .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
 
