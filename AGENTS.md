@@ -17,6 +17,9 @@
 - **Target SDK**: 35
 - **Spec location**: `openspec/changes/bluetooth-bouncer/`
 
+## Documentation
+- **README.md** must be kept in sync with the app's features. When adding, removing, or changing user-facing functionality, update `README.md` to reflect the current state of the app.
+
 ## Build & Tooling
 - **Gradle wrapper**: No system-wide Gradle install. The wrapper (`gradlew.bat` + `gradle-wrapper.jar`) is checked in; `gradle-wrapper.jar` was sourced from `C:\Data\Dev\random\duali-td\android\build\gradle\wrapper\`
 - **`ANDROID_HOME` per shell**: Set `$env:ANDROID_HOME = "C:\Users\Harve\AppData\Local\Android\Sdk"` before every `gradlew.bat` invocation
