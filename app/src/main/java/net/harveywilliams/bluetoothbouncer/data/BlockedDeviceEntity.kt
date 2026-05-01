@@ -11,4 +11,5 @@ data class BlockedDeviceEntity(
     val timestamp: Long = System.currentTimeMillis(),
     val cdmAssociationId: Int? = null,
     val isTemporarilyAllowed: Boolean = false,
+    val isAlertEnabled: Boolean = false,
 )

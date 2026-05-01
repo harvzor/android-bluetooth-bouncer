@@ -64,6 +64,8 @@ fun DeviceListScreen(
     uiState: DeviceListViewModel.UiState,
     onToggleBlock: (DeviceListViewModel.DeviceUiModel) -> Unit,
     onToggleWatch: (DeviceListViewModel.DeviceUiModel) -> Unit,
+    onConnect: (DeviceListViewModel.DeviceUiModel) -> Unit,
+    onDisconnect: (DeviceListViewModel.DeviceUiModel) -> Unit,
     watchAssociationIntent: IntentSender?,
     onWatchAssociationResult: (Int) -> Unit,
     onClearWatchError: () -> Unit,
@@ -224,8 +226,12 @@ fun DeviceListScreen(
                         devices = uiState.devices,
                         shizukuReady = uiState.shizukuState is ShizukuHelper.State.Ready,
                         watchLoadingAddress = uiState.watchLoadingAddress,
+                        connectLoadingAddress = uiState.connectLoadingAddress,
+                        disconnectLoadingAddress = uiState.disconnectLoadingAddress,
                         onToggleBlock = onToggleBlock,
                         onToggleWatch = safeToggleWatch,
+                        onConnect = onConnect,
+                        onDisconnect = onDisconnect,
                     )
                 }
             }
@@ -308,8 +314,12 @@ private fun DeviceList(
     devices: List<DeviceListViewModel.DeviceUiModel>,
     shizukuReady: Boolean,
     watchLoadingAddress: String?,
+    connectLoadingAddress: String?,
+    disconnectLoadingAddress: String?,
     onToggleBlock: (DeviceListViewModel.DeviceUiModel) -> Unit,
     onToggleWatch: (DeviceListViewModel.DeviceUiModel) -> Unit,
+    onConnect: (DeviceListViewModel.DeviceUiModel) -> Unit,
+    onDisconnect: (DeviceListViewModel.DeviceUiModel) -> Unit,
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         var lastSection: DeviceListViewModel.DeviceSection? = null
@@ -331,8 +341,12 @@ private fun DeviceList(
                     device = device,
                     shizukuReady = shizukuReady,
                     isWatchLoading = watchLoadingAddress == device.address,
+                    isConnectLoading = connectLoadingAddress == device.address,
+                    isDisconnectLoading = disconnectLoadingAddress == device.address,
                     onToggle = { onToggleBlock(device) },
                     onToggleWatch = { onToggleWatch(device) },
+                    onConnect = { onConnect(device) },
+                    onDisconnect = { onDisconnect(device) },
                 )
                 // Divider between items within the same section; omit after last item in section
                 val nextDevice = devices.getOrNull(index + 1)
@@ -349,8 +363,12 @@ private fun DeviceRow(
     device: DeviceListViewModel.DeviceUiModel,
     shizukuReady: Boolean,
     isWatchLoading: Boolean,
+    isConnectLoading: Boolean,
+    isDisconnectLoading: Boolean,
     onToggle: () -> Unit,
     onToggleWatch: () -> Unit,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -417,11 +435,46 @@ private fun DeviceRow(
             }
         }
 
-        // Toggles column (right side)
+        // Actions column (right side)
         Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Connect / Disconnect button — API 33+ only
+            // Visibility rules:
+            //   - Temp-allowed + disconnected: neither (auto-reverting)
+            //   - Any + connected: Disconnect
+            //   - Blocked + disconnected: Connect
+            //   - Allowed + disconnected: Connect
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val showConnect = !device.isConnected && !device.isTemporarilyAllowed
+                val showDisconnect = device.isConnected
+                when {
+                    showDisconnect -> {
+                        TextButton(
+                            onClick = onDisconnect,
+                            enabled = shizukuReady && !isDisconnectLoading,
+                        ) {
+                            Text(
+                                text = "Disconnect",
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+                    }
+                    showConnect -> {
+                        TextButton(
+                            onClick = onConnect,
+                            enabled = shizukuReady && !isConnectLoading,
+                        ) {
+                            Text(
+                                text = "Connect",
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+                    }
+                }
+            }
+
             // Alert toggle — visible only for blocked devices on API 33+
             if (device.isBlocked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {

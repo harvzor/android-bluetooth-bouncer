@@ -1,3 +1,5 @@
+## MODIFIED Requirements
+
 ### Requirement: Watch a blocked device for background presence
 The app SHALL allow users to opt individual blocked devices into background presence monitoring. When a device is "watched", the app SHALL register it with `CompanionDeviceManager` and call `startObservingDevicePresence()` so the OS can wake the app when that device comes into Bluetooth range, even if the app process is not running. This feature SHALL only be available on API 33 and above. The UI toggle for this feature SHALL be labelled "Alert". A CDM association MAY already exist for the device (created by a prior Connect action); in that case, the association dialog SHALL NOT be shown again and the existing `cdmAssociationId` SHALL be reused.
 
@@ -75,20 +77,16 @@ When a watched blocked device comes into Bluetooth range, the app SHALL post a n
 - **AND** a notification for that device is already visible in the notification drawer
 - **THEN** the notification is silently updated (no sound, no vibration, no heads-up)
 
-### Requirement: Allow a blocked device temporarily from a notification
-The app SHALL provide a one-tap "Allow temporarily" action in the presence notification. Tapping it SHALL call `setConnectionPolicy(CONNECTION_POLICY_ALLOWED)` via Shizuku and mark the device as temporarily allowed in the database, without requiring the user to open the app.
+### Requirement: Disable Watch for a blocked device
+The user SHALL be able to disable the Alert toggle for a blocked device. Doing so SHALL stop presence observation and set `isAlertEnabled` to false, but SHALL NOT disassociate the CDM association or clear `cdmAssociationId`. The CDM association is retained so that a future Connect tap does not require a new system confirmation dialog.
 
-#### Scenario: User taps "Allow temporarily"
-- **WHEN** the user taps the "Allow temporarily" action on the presence notification
-- **THEN** the app calls `setConnectionPolicy(device, CONNECTION_POLICY_ALLOWED)` on all supported profiles via Shizuku
-- **THEN** `isTemporarilyAllowed` is set to true in `BlockedDeviceEntity`
-- **THEN** the notification is dismissed
-- **THEN** the device is able to connect normally
-
-#### Scenario: Shizuku is not running when "Allow temporarily" is tapped
-- **WHEN** the user taps "Allow temporarily" but Shizuku is not running
-- **THEN** the app posts an error notification: "Could not allow — Shizuku is not running"
-- **THEN** `isTemporarilyAllowed` remains false
+#### Scenario: User disables Alert
+- **WHEN** the user disables the Alert toggle on a blocked device
+- **THEN** the app calls `stopObservingDevicePresence(associationId)`
+- **THEN** `isAlertEnabled` is set to false in `BlockedDeviceEntity`
+- **THEN** `cdmAssociationId` is NOT cleared
+- **THEN** no further presence notifications are posted for that device
+- **THEN** the CDM association remains registered with the system
 
 ### Requirement: Automatically re-block when a temporarily allowed device leaves range
 When a device that was temporarily allowed leaves Bluetooth range, the app SHALL automatically re-apply `CONNECTION_POLICY_FORBIDDEN` and clear the temporary-allow flag, returning the device to its normal blocked state. This applies regardless of whether the temp-allow was triggered by the Connect button or by the "Allow temporarily" notification action.
@@ -109,14 +107,3 @@ When a device that was temporarily allowed leaves Bluetooth range, the app SHALL
 - **WHEN** `CompanionDeviceService.onDeviceDisappeared()` fires for a device
 - **AND** `isTemporarilyAllowed` is false
 - **THEN** no action is taken (device is already blocked)
-
-### Requirement: Disable Watch for a blocked device
-The user SHALL be able to disable the Alert toggle for a blocked device. Doing so SHALL stop presence observation and set `isAlertEnabled` to false, but SHALL NOT disassociate the CDM association or clear `cdmAssociationId`. The CDM association is retained so that a future Connect tap does not require a new system confirmation dialog.
-
-#### Scenario: User disables Alert
-- **WHEN** the user disables the Alert toggle on a blocked device
-- **THEN** the app calls `stopObservingDevicePresence(associationId)`
-- **THEN** `isAlertEnabled` is set to false in `BlockedDeviceEntity`
-- **THEN** `cdmAssociationId` is NOT cleared
-- **THEN** no further presence notifications are posted for that device
-- **THEN** the CDM association remains registered with the system

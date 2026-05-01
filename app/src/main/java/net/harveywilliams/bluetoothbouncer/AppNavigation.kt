@@ -46,6 +46,8 @@ fun AppNavigation(
                 uiState = uiState,
                 onToggleBlock = viewModel::toggleBlock,
                 onToggleWatch = viewModel::toggleWatch,
+                onConnect = viewModel::connectDevice,
+                onDisconnect = viewModel::disconnectDevice,
                 watchAssociationIntent = watchAssociationIntent,
                 onWatchAssociationResult = viewModel::onWatchAssociationResult,
                 onClearWatchError = viewModel::clearWatchError,

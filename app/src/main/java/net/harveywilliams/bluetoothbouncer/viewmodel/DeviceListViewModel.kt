@@ -84,6 +84,10 @@ class DeviceListViewModel(
         val watchError: String? = null,
         /** Message to show in a Snackbar when Alert is successfully enabled. */
         val watchSuccess: String? = null,
+        /** MAC address of a device whose Connect action is in-flight. */
+        val connectLoadingAddress: String? = null,
+        /** MAC address of a device whose Disconnect action is in-flight. */
+        val disconnectLoadingAddress: String? = null,
     )
 
     // ── State ─────────────────────────────────────────────────────────────────
@@ -235,12 +239,12 @@ class DeviceListViewModel(
                         )
                     )
                 } else {
-                    // Unblocking: clean up CDM association if Watch was enabled
+                    // Unblocking: clean up CDM association if one exists (from Alert or Connect)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         val entity = blockedDeviceDao.getDeviceByMac(device.address)
                         val assocId = entity?.cdmAssociationId
                         if (assocId != null) {
-                            deviceWatchManager?.disableWatch(device.address, assocId)
+                            deviceWatchManager?.disableWatchAndDisassociate(device.address, assocId)
                         }
                     }
                     blockedDeviceDao.deleteDevice(device.address)
@@ -264,55 +268,60 @@ class DeviceListViewModel(
     /**
      * Toggles the Alert state for a blocked device (API 33+ only).
      *
-     * Enabling: initiates a CDM association via [DeviceWatchManager.associate]. A pending
-     * [IntentSender] is emitted via [watchAssociationIntent] for the UI to launch.
-     * Disabling: stops presence observation and removes the CDM association.
+     * Enabling: initiates a CDM association via [DeviceWatchManager.ensureAssociated]. If a CDM
+     * association already exists (from a prior Connect action), the system dialog is skipped.
+     * Disabling: stops presence observation and sets [isAlertEnabled] to false, but retains
+     * the CDM association so future Connect taps don't need the dialog again.
      */
     fun toggleWatch(device: DeviceUiModel) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
         val manager = deviceWatchManager ?: return
 
         if (device.isWatched) {
-            // Disable watch (Alert off)
+            // Disable watch (Alert off) — keep CDM association, only stop notifications
             viewModelScope.launch {
-                val entity = blockedDeviceDao.getDeviceByMac(device.address) ?: return@launch
-                val assocId = entity.cdmAssociationId ?: return@launch
-                manager.disableWatch(device.address, assocId)
+                manager.disableWatch(device.address)
             }
         } else {
-            // Enable watch (Alert on) — begin association flow
+            // Enable watch (Alert on) — use ensureAssociated to skip dialog if already associated
             _uiState.update { it.copy(watchLoadingAddress = device.address) }
             pendingWatchDevice = device
 
-            manager.associate(
-                macAddress = device.address,
-                onPendingIntent = { intentSender ->
-                    _watchAssociationIntent.value = intentSender
-                },
-                onSuccess = { associationInfo ->
-                    viewModelScope.launch {
-                        try {
-                            manager.enableWatch(device.address, associationInfo.id)
-                            _uiState.update {
-                                it.copy(watchSuccess = "You'll get a notification when this device is nearby. Tap it to temporarily allow a connection.")
+            viewModelScope.launch {
+                val entity = blockedDeviceDao.getDeviceByMac(device.address)
+                val existingAssocId = entity?.cdmAssociationId
+
+                manager.ensureAssociated(
+                    macAddress = device.address,
+                    existingAssociationId = existingAssocId,
+                    onPendingIntent = { intentSender ->
+                        _watchAssociationIntent.value = intentSender
+                    },
+                    onSuccess = { associationId ->
+                        viewModelScope.launch {
+                            try {
+                                manager.enableWatch(device.address, associationId)
+                                _uiState.update {
+                                    it.copy(watchSuccess = "You'll get a notification when this device is nearby. Tap it to temporarily allow a connection.")
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "enableWatch failed for ${device.address}", e)
+                                _uiState.update {
+                                    it.copy(watchError = "Failed to enable Alert: ${e.message}")
+                                }
+                            } finally {
+                                _uiState.update { it.copy(watchLoadingAddress = null) }
+                                pendingWatchDevice = null
                             }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "enableWatch failed for ${device.address}", e)
-                            _uiState.update {
-                                it.copy(watchError = "Failed to enable Alert: ${e.message}")
-                            }
-                        } finally {
-                            _uiState.update { it.copy(watchLoadingAddress = null) }
-                            pendingWatchDevice = null
                         }
-                    }
-                },
-                onFailure = { _ ->
-                    _uiState.update { it.copy(watchLoadingAddress = null) }
-                    pendingWatchDevice = null
-                    _watchAssociationIntent.value = null
-                },
-            )
+                    },
+                    onFailure = { _ ->
+                        _uiState.update { it.copy(watchLoadingAddress = null) }
+                        pendingWatchDevice = null
+                        _watchAssociationIntent.value = null
+                    },
+                )
+            }
         }
     }
 
@@ -328,6 +337,120 @@ class DeviceListViewModel(
             pendingWatchDevice = null
         }
         // RESULT_OK: onAssociationCreated already fired and is handled by the onSuccess callback.
+    }
+
+    /**
+     * Connects a device:
+     *  - Blocked device: temporarily allows (CDM-backed, auto-reverts when device leaves range)
+     *  - Allowed device: active profile connect, no policy change
+     *
+     * API 33+ only — callers must guard with the same check.
+     */
+    fun connectDevice(device: DeviceUiModel) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val manager = deviceWatchManager ?: return
+
+        _uiState.update { it.copy(connectLoadingAddress = device.address) }
+
+        if (device.isBlocked) {
+            // Blocked device: ensure CDM association, then set POLICY_ALLOWED + mark temp-allowed
+            viewModelScope.launch {
+                val entity = blockedDeviceDao.getDeviceByMac(device.address)
+                val existingAssocId = entity?.cdmAssociationId
+
+                manager.ensureAssociated(
+                    macAddress = device.address,
+                    existingAssociationId = existingAssocId,
+                    onPendingIntent = { intentSender ->
+                        _watchAssociationIntent.value = intentSender
+                    },
+                    onSuccess = { associationId ->
+                        viewModelScope.launch {
+                            try {
+                                // Start CDM observation so DeviceWatcherService can auto-revert
+                                manager.startObservingForConnect(device.address, associationId)
+                                // Set policy to allowed + mark as temporarily allowed
+                                val result = shizukuHelper.setConnectionPolicy(device.address, ShizukuHelper.POLICY_ALLOWED)
+                                if (result.isSuccess) {
+                                    blockedDeviceDao.updateIsTemporarilyAllowed(device.address, true)
+                                } else {
+                                    val msg = "Failed to connect ${device.name}"
+                                    Log.w(TAG, "$msg: ${result.exceptionOrNull()?.message}")
+                                    _uiState.update { it.copy(toggleError = msg) }
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "connectDevice blocked path failed for ${device.address}", e)
+                                _uiState.update { it.copy(toggleError = "Failed to connect ${device.name}") }
+                            } finally {
+                                _uiState.update { it.copy(connectLoadingAddress = null) }
+                            }
+                        }
+                    },
+                    onFailure = { _ ->
+                        _uiState.update { it.copy(connectLoadingAddress = null) }
+                        _watchAssociationIntent.value = null
+                    },
+                )
+            }
+        } else {
+            // Allowed device: direct connect, no policy change
+            viewModelScope.launch {
+                try {
+                    val result = shizukuHelper.connectDevice(device.address)
+                    if (result.isFailure) {
+                        val msg = "Failed to connect ${device.name}"
+                        Log.w(TAG, "$msg: ${result.exceptionOrNull()?.message}")
+                        _uiState.update { it.copy(toggleError = msg) }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "connectDevice allowed path failed for ${device.address}", e)
+                    _uiState.update { it.copy(toggleError = "Failed to connect ${device.name}") }
+                } finally {
+                    _uiState.update { it.copy(connectLoadingAddress = null) }
+                }
+            }
+        }
+    }
+
+    /**
+     * Disconnects a device:
+     *  - Blocked or temp-allowed device: re-applies POLICY_FORBIDDEN and clears temp-allowed flag
+     *  - Allowed device: active profile disconnect only, no policy change (Android may auto-reconnect)
+     *
+     * API 33+ only — callers must guard with the same check.
+     */
+    fun disconnectDevice(device: DeviceUiModel) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+
+        _uiState.update { it.copy(disconnectLoadingAddress = device.address) }
+
+        viewModelScope.launch {
+            try {
+                val disconnectResult = shizukuHelper.disconnectDevice(device.address)
+                if (disconnectResult.isFailure) {
+                    val msg = "Failed to disconnect ${device.name}"
+                    Log.w(TAG, "$msg: ${disconnectResult.exceptionOrNull()?.message}")
+                    _uiState.update { it.copy(toggleError = msg) }
+                    return@launch
+                }
+                // For blocked/temp-allowed devices, also re-apply POLICY_FORBIDDEN
+                if (device.isBlocked || device.isTemporarilyAllowed) {
+                    val policyResult = shizukuHelper.setConnectionPolicy(device.address, ShizukuHelper.POLICY_FORBIDDEN)
+                    if (policyResult.isSuccess) {
+                        if (device.isTemporarilyAllowed) {
+                            blockedDeviceDao.updateIsTemporarilyAllowed(device.address, false)
+                        }
+                    } else {
+                        Log.w(TAG, "disconnectDevice: re-block failed for ${device.address}: ${policyResult.exceptionOrNull()?.message}")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "disconnectDevice failed for ${device.address}", e)
+                _uiState.update { it.copy(toggleError = "Failed to disconnect ${device.name}") }
+            } finally {
+                _uiState.update { it.copy(disconnectLoadingAddress = null) }
+            }
+        }
     }
 
     fun clearToggleError() {
@@ -440,9 +563,9 @@ class DeviceListViewModel(
 
         val blockedAddresses = blockedDevices.map { it.macAddress }.toSet()
 
-        // Watched device addresses (have a non-null cdmAssociationId)
+        // Watched device addresses (Alert enabled)
         val watchedAddresses = blockedDevices
-            .filter { it.cdmAssociationId != null }
+            .filter { it.isAlertEnabled }
             .map { it.macAddress }
             .toSet()
 

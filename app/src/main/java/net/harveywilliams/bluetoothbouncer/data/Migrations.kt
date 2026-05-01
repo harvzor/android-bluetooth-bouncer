@@ -20,3 +20,21 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         )
     }
 }
+
+/**
+ * Room schema migration from version 2 to 3.
+ *
+ * Adds [isAlertEnabled] column to [blocked_devices] and backfills it from
+ * [cdmAssociationId]: any row that already had a CDM association had Alert enabled,
+ * so it should continue to receive notifications after the upgrade.
+ */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "ALTER TABLE blocked_devices ADD COLUMN isAlertEnabled INTEGER NOT NULL DEFAULT 0"
+        )
+        db.execSQL(
+            "UPDATE blocked_devices SET isAlertEnabled = 1 WHERE cdmAssociationId IS NOT NULL"
+        )
+    }
+}

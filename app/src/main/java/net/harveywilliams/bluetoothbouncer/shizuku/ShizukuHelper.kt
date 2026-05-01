@@ -132,15 +132,7 @@ class ShizukuHelper(private val context: Context) {
     suspend fun setConnectionPolicy(macAddress: String, policy: Int): Result<IntArray> {
         // If the UserService isn't ready yet but Shizuku is running and we have
         // permission, binding is in progress — wait for it rather than failing.
-        if (userService == null && isShizukuRunning() && hasPermission()) {
-            try {
-                withTimeout(BIND_TIMEOUT_MS) {
-                    _state.first { it is State.Ready }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Timed out or interrupted waiting for UserService to bind", e)
-            }
-        }
+        awaitServiceIfNeeded()
 
         val service = userService
             ?: return Result.failure(IllegalStateException("Shizuku UserService is not available"))
@@ -164,6 +156,48 @@ class ShizukuHelper(private val context: Context) {
         }
     }
 
+    /**
+     * Actively connects a Bluetooth device across all supported profiles via the UserService.
+     * Returns [Result.success] if at least one profile reported success, [Result.failure] otherwise.
+     */
+    suspend fun connectDevice(macAddress: String): Result<IntArray> {
+        awaitServiceIfNeeded()
+        val service = userService
+            ?: return Result.failure(IllegalStateException("Shizuku UserService is not available"))
+        return try {
+            val results = service.connectDevice(macAddress)
+            if (results.none { it == 1 }) {
+                Result.failure(IllegalStateException("connectDevice had no effect on any profile (results: ${results.toList()})"))
+            } else {
+                Result.success(results)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "connectDevice failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Actively disconnects a Bluetooth device across all supported profiles via the UserService.
+     * Returns [Result.success] if at least one profile reported success, [Result.failure] otherwise.
+     */
+    suspend fun disconnectDevice(macAddress: String): Result<IntArray> {
+        awaitServiceIfNeeded()
+        val service = userService
+            ?: return Result.failure(IllegalStateException("Shizuku UserService is not available"))
+        return try {
+            val results = service.disconnectDevice(macAddress)
+            if (results.none { it == 1 }) {
+                Result.failure(IllegalStateException("disconnectDevice had no effect on any profile (results: ${results.toList()})"))
+            } else {
+                Result.success(results)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "disconnectDevice failed", e)
+            Result.failure(e)
+        }
+    }
+
     /** Release all Shizuku listeners and unbind the service. Call from Application.onTerminate or similar. */
     fun cleanup() {
         Shizuku.removeBinderReceivedListener(binderReceivedListener)
@@ -173,6 +207,19 @@ class ShizukuHelper(private val context: Context) {
     }
 
     // ── Private helpers ──────────────────────────────────────────────────────
+
+    /** Suspends until the UserService is ready, or gives up after [BIND_TIMEOUT_MS]. */
+    private suspend fun awaitServiceIfNeeded() {
+        if (userService == null && isShizukuRunning() && hasPermission()) {
+            try {
+                withTimeout(BIND_TIMEOUT_MS) {
+                    _state.first { it is State.Ready }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Timed out or interrupted waiting for UserService to bind", e)
+            }
+        }
+    }
 
     fun isShizukuInstalled(): Boolean {
         return try {

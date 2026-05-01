@@ -73,9 +73,40 @@ class DeviceWatchManager(
     }
 
     /**
-     * Registers the device for presence observation and persists [associationId] to Room.
-     * Call this after [onAssociationCreated] fires (i.e. user confirmed the dialog).
+     * Ensures a CDM association exists for [macAddress].
      *
+     * If a CDM association is already present ([existingAssociationId] is non-null),
+     * [onSuccess] is called immediately with the existing ID — no system dialog is shown.
+     * Otherwise, falls through to a full [associate] call (showing the dialog).
+     *
+     * This is used by the Connect button so that repeat taps on the same device skip
+     * the system confirmation dialog after the first use.
+     */
+    fun ensureAssociated(
+        macAddress: String,
+        existingAssociationId: Int?,
+        onPendingIntent: (IntentSender) -> Unit,
+        onSuccess: (Int) -> Unit,
+        onFailure: (String?) -> Unit,
+    ) {
+        if (existingAssociationId != null) {
+            Log.d(TAG, "CDM association already exists for $macAddress (id=$existingAssociationId) — skipping dialog")
+            onSuccess(existingAssociationId)
+            return
+        }
+        associate(
+            macAddress = macAddress,
+            onPendingIntent = onPendingIntent,
+            onSuccess = { associationInfo -> onSuccess(associationInfo.id) },
+            onFailure = onFailure,
+        )
+    }
+
+    /**
+     * Registers the device for presence observation, persists [associationId] to Room,
+     * and sets [isAlertEnabled] to true.
+     *
+     * Call this after a CDM association is confirmed (either newly created or pre-existing).
      * [startObservingDevicePresence] takes the device MAC address on API 33.
      */
     suspend fun enableWatch(macAddress: String, associationId: Int) {
@@ -83,17 +114,52 @@ class DeviceWatchManager(
             cdm.startObservingDevicePresence(macAddress)
         }
         dao.updateCdmAssociationId(macAddress, associationId)
+        dao.updateIsAlertEnabled(macAddress, true)
         Log.d(TAG, "Watch enabled for $macAddress (associationId=$associationId)")
     }
 
     /**
-     * Stops presence observation, removes the CDM association, and clears [cdmAssociationId]
-     * in Room.
+     * Starts presence observation and persists [associationId] to Room, but does NOT set
+     * [isAlertEnabled]. Used by the Connect button path so that [DeviceWatcherService]
+     * can auto-revert the device to blocked when it leaves range, without turning on Alert
+     * notifications (the user did not request notifications, only a temporary connection).
+     */
+    suspend fun startObservingForConnect(macAddress: String, associationId: Int) {
+        withContext(Dispatchers.Main) {
+            cdm.startObservingDevicePresence(macAddress)
+        }
+        dao.updateCdmAssociationId(macAddress, associationId)
+        Log.d(TAG, "Observation started for connect on $macAddress (associationId=$associationId)")
+    }
+
+    /**
+     * Stops presence observation and sets [isAlertEnabled] to false, but retains the CDM
+     * association so that a future Connect action does not require a new system dialog.
      *
-     * Each step is attempted independently — a failure in one does not prevent the others.
+     * Use this for the Alert toggle OFF path.
      * [stopObservingDevicePresence] takes the device MAC address on API 33.
      */
-    suspend fun disableWatch(macAddress: String, associationId: Int) {
+    suspend fun disableWatch(macAddress: String) {
+        withContext(Dispatchers.Main) {
+            try {
+                cdm.stopObservingDevicePresence(macAddress)
+                Log.d(TAG, "Stopped observing presence for $macAddress")
+            } catch (e: Exception) {
+                Log.w(TAG, "stopObservingDevicePresence failed for $macAddress", e)
+            }
+        }
+        dao.updateIsAlertEnabled(macAddress, false)
+        Log.d(TAG, "Alert disabled for $macAddress (CDM association retained)")
+    }
+
+    /**
+     * Stops presence observation, removes the CDM association, clears [cdmAssociationId],
+     * and sets [isAlertEnabled] to false in Room.
+     *
+     * Use this when a device is fully unblocked (device record will be deleted from Room).
+     * Each step is attempted independently — a failure in one does not prevent the others.
+     */
+    suspend fun disableWatchAndDisassociate(macAddress: String, associationId: Int) {
         withContext(Dispatchers.Main) {
             try {
                 cdm.stopObservingDevicePresence(macAddress)
@@ -109,7 +175,8 @@ class DeviceWatchManager(
             }
         }
         dao.updateCdmAssociationId(macAddress, null)
-        Log.d(TAG, "Watch disabled for $macAddress")
+        dao.updateIsAlertEnabled(macAddress, false)
+        Log.d(TAG, "Watch fully disabled and disassociated for $macAddress")
     }
 
     companion object {

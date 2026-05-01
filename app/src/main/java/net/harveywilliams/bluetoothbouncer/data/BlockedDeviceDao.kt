@@ -27,6 +27,9 @@ interface BlockedDeviceDao {
     @Query("UPDATE blocked_devices SET isTemporarilyAllowed = :allowed WHERE macAddress = :macAddress")
     suspend fun updateIsTemporarilyAllowed(macAddress: String, allowed: Boolean)
 
+    @Query("UPDATE blocked_devices SET isAlertEnabled = :enabled WHERE macAddress = :macAddress")
+    suspend fun updateIsAlertEnabled(macAddress: String, enabled: Boolean)
+
     @Query("SELECT * FROM blocked_devices WHERE cdmAssociationId IS NOT NULL")
     suspend fun getWatchedDevices(): List<BlockedDeviceEntity>
 

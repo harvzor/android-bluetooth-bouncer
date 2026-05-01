@@ -138,6 +138,90 @@ class BluetoothBouncerUserService : IBluetoothBouncerUserService.Stub() {
         return results
     }
 
+    override fun connectDevice(macAddress: String): IntArray {
+        reinitializeIfNeeded()
+
+        val device: BluetoothDevice? = try {
+            bluetoothAdapter?.getRemoteDevice(macAddress)
+        } catch (e: Exception) {
+            Log.e(TAG, "Invalid MAC address: $macAddress", e)
+            null
+        }
+        if (device == null) {
+            Log.e(TAG, "connectDevice: device is null (adapter=${bluetoothAdapter})")
+            return intArrayOf(-1, -1, -1)
+        }
+
+        val results = IntArray(3) { -1 }
+        val timeoutSec = 8L
+
+        try {
+            val a2dp = a2dpFuture.get(timeoutSec, TimeUnit.SECONDS)
+            results[0] = if (a2dp != null) callProfileMethod(a2dp, device, "connect") else -1
+        } catch (e: Exception) {
+            Log.w(TAG, "A2DP proxy timeout/error during connect", e)
+        }
+
+        try {
+            val headset = headsetFuture.get(timeoutSec, TimeUnit.SECONDS)
+            results[1] = if (headset != null) callProfileMethod(headset, device, "connect") else -1
+        } catch (e: Exception) {
+            Log.w(TAG, "Headset proxy timeout/error during connect", e)
+        }
+
+        try {
+            val hid = hidFuture.get(timeoutSec, TimeUnit.SECONDS)
+            results[2] = if (hid != null) callProfileMethod(hid, device, "connect") else -1
+        } catch (e: Exception) {
+            Log.w(TAG, "HID proxy timeout/error during connect", e)
+        }
+
+        Log.d(TAG, "connectDevice($macAddress) → ${results.toList()}")
+        return results
+    }
+
+    override fun disconnectDevice(macAddress: String): IntArray {
+        reinitializeIfNeeded()
+
+        val device: BluetoothDevice? = try {
+            bluetoothAdapter?.getRemoteDevice(macAddress)
+        } catch (e: Exception) {
+            Log.e(TAG, "Invalid MAC address: $macAddress", e)
+            null
+        }
+        if (device == null) {
+            Log.e(TAG, "disconnectDevice: device is null (adapter=${bluetoothAdapter})")
+            return intArrayOf(-1, -1, -1)
+        }
+
+        val results = IntArray(3) { -1 }
+        val timeoutSec = 8L
+
+        try {
+            val a2dp = a2dpFuture.get(timeoutSec, TimeUnit.SECONDS)
+            results[0] = if (a2dp != null) callProfileMethod(a2dp, device, "disconnect") else -1
+        } catch (e: Exception) {
+            Log.w(TAG, "A2DP proxy timeout/error during disconnect", e)
+        }
+
+        try {
+            val headset = headsetFuture.get(timeoutSec, TimeUnit.SECONDS)
+            results[1] = if (headset != null) callProfileMethod(headset, device, "disconnect") else -1
+        } catch (e: Exception) {
+            Log.w(TAG, "Headset proxy timeout/error during disconnect", e)
+        }
+
+        try {
+            val hid = hidFuture.get(timeoutSec, TimeUnit.SECONDS)
+            results[2] = if (hid != null) callProfileMethod(hid, device, "disconnect") else -1
+        } catch (e: Exception) {
+            Log.w(TAG, "HID proxy timeout/error during disconnect", e)
+        }
+
+        Log.d(TAG, "disconnectDevice($macAddress) → ${results.toList()}")
+        return results
+    }
+
     /**
      * Calls proxy.setConnectionPolicy(device, policy) via reflection.
      * The method is hidden API but accessible when running as shell UID.
@@ -153,6 +237,21 @@ class BluetoothBouncerUserService : IBluetoothBouncerUserService.Stub() {
             if (result) 1 else 0
         } catch (e: Exception) {
             Log.e(TAG, "setConnectionPolicy reflection failed on ${proxy.javaClass.simpleName}", e)
+            0
+        }
+    }
+
+    /**
+     * Calls proxy.connect(device) or proxy.disconnect(device) via reflection.
+     * Both are hidden APIs accessible when running as shell UID.
+     */
+    private fun callProfileMethod(proxy: Any, device: BluetoothDevice, methodName: String): Int {
+        return try {
+            val method = proxy.javaClass.getMethod(methodName, BluetoothDevice::class.java)
+            val result = method.invoke(proxy, device) as? Boolean ?: false
+            if (result) 1 else 0
+        } catch (e: Exception) {
+            Log.e(TAG, "$methodName reflection failed on ${proxy.javaClass.simpleName}", e)
             0
         }
     }

@@ -54,11 +54,13 @@ class DeviceWatcherService : CompanionDeviceService() {
                 Log.d(TAG, "Updating stale cdmAssociationId ${entity.cdmAssociationId} -> $associationId for ${entity.macAddress}")
                 dao.updateCdmAssociationId(entity.macAddress, associationId)
             }
-            if (!entity.isTemporarilyAllowed) {
+            if (!entity.isTemporarilyAllowed && entity.isAlertEnabled) {
                 WatchNotificationHelper.postNearbyNotification(this@DeviceWatcherService, entity)
                 Log.d(TAG, "Posted nearby notification for ${entity.deviceName}")
-            } else {
+            } else if (entity.isTemporarilyAllowed) {
                 Log.d(TAG, "Device ${entity.deviceName} already temporarily allowed — skipping notification")
+            } else {
+                Log.d(TAG, "Device ${entity.deviceName} has no Alert enabled — skipping notification")
             }
         }
     }
