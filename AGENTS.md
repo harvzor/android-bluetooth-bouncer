@@ -9,7 +9,7 @@
 ## App Details
 - **Package**: `net.harveywilliams.bluetoothbouncer`
 - **Min SDK**: 31 (Android 12)
-- **Target SDK**: 35
+- **Target SDK**: 36
 - **Spec location**: `openspec/changes/bluetooth-bouncer/`
 
 ## Documentation
@@ -18,8 +18,7 @@
 ## Build & Tooling
 - **Gradle wrapper**: No system-wide Gradle install. The wrapper (`gradlew.bat` + `gradle-wrapper.jar`) is checked in; regenerate with `gradlew.bat wrapper --gradle-version <version>` if needed
 - **`ANDROID_HOME` per shell**: Set `$env:ANDROID_HOME = "<your SDK path>"` before every `gradlew.bat` invocation
-- **AGP / compileSdk warning**: AGP 8.5.2 warns about compileSdk 35 — this is cosmetic; suppress with `android.suppressUnsupportedCompileSdk=35` in `gradle.properties` or upgrade AGP when available
-- **Java**: JDK 17 is required and must be on PATH
+- **Java**: JDK 25 (Temurin) is required. Version is pinned via `mise.toml` at the repo root — run `mise install` to get the correct JDK automatically if you have [mise](https://mise.jdx.dev/) installed.
 
 ## Android API Gotchas
 - **`BluetoothProfile.HID_HOST`**: Not in the compile-time SDK — use integer literal `4` directly
