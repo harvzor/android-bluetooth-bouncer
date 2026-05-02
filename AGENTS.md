@@ -18,7 +18,7 @@
 ## Build & Tooling
 - **Gradle wrapper**: No system-wide Gradle install. The wrapper (`gradlew.bat` + `gradle-wrapper.jar`) is checked in; regenerate with `gradlew.bat wrapper --gradle-version <version>` if needed
 - **`ANDROID_HOME` per shell**: Set `$env:ANDROID_HOME = "<your SDK path>"` before every `gradlew.bat` invocation
-- **Java**: JDK 25 (Temurin) is required. Version is pinned via `mise.toml` at the repo root — run `mise install` to get the correct JDK automatically if you have [mise](https://mise.jdx.dev/) installed.
+- **Java**: JDK 25 (Temurin) is required. Version is pinned in `.java-version` at the repo root.
 
 ## Android API Gotchas
 - **`BluetoothProfile.HID_HOST`**: Not in the compile-time SDK — use integer literal `4` directly

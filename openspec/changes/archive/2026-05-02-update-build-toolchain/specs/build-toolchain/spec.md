@@ -1,6 +1,4 @@
-# Build Toolchain
-
-Specifies the required build environment for this project.
+## MODIFIED Requirements
 
 ### Requirement: Project pins JDK version via .java-version
 The project SHALL include a `.java-version` file at the repository root containing `temurin-25`, ensuring developers and CI environments using mise, jenv, SDKMAN, or compatible tooling resolve the correct JDK automatically.
@@ -17,23 +15,7 @@ The project SHALL include a `.java-version` file at the repository root containi
 - **WHEN** a developer inspects the repository root
 - **THEN** `mise.toml` does NOT exist; `.java-version` is present with content `temurin-25`
 
-### Requirement: Build uses Gradle 9.x and AGP 9.x
-The project build system SHALL use Gradle 9.5.0 and Android Gradle Plugin 9.2.0 as defined in `gradle-wrapper.properties` and `libs.versions.toml` respectively.
-
-#### Scenario: Gradle wrapper resolves correct version
-- **WHEN** `gradlew assembleDebug` is executed
-- **THEN** Gradle 9.5.0 is used as the build system
-
-#### Scenario: Build succeeds with updated AGP
-- **WHEN** `gradlew assembleDebug` is executed after the upgrade
-- **THEN** the build completes without errors and produces a valid APK
-
-### Requirement: JVM bytecode targets Java 17
-The project SHALL compile Kotlin source to JVM 17 bytecode. `sourceCompatibility` and `targetCompatibility` are set to Java 17; `kotlin { jvmToolchain(25) }` is used with `compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }` to compile with JDK 25 while emitting JVM 17-compatible bytecode.
-
-#### Scenario: Compiled bytecode targets Java 17
-- **WHEN** the project is compiled
-- **THEN** output bytecode is compatible with Java 17 class file format
+## MODIFIED Requirements
 
 ### Requirement: AGENTS.md documents current JDK requirement
 The `AGENTS.md` file SHALL accurately document JDK 25 as the required Java version and reference `.java-version` as the pinning mechanism, without prescribing a specific version manager tool.

@@ -3,7 +3,7 @@
 # =============================================================================
 # Stage 1: builder
 # =============================================================================
-FROM eclipse-temurin:17-jdk-jammy AS builder
+FROM eclipse-temurin:25-jdk-noble AS builder
 
 # Use bash for all RUN commands (required for ${VAR^} capitalisation)
 SHELL ["/bin/bash", "-c"]
@@ -18,7 +18,7 @@ RUN apt-get update -q && \
 # Pinned to a specific version for reproducibility.
 # Update ANDROID_CMDLINE_TOOLS_VERSION when bumping SDK tooling.
 # ---------------------------------------------------------------------------
-ARG ANDROID_CMDLINE_TOOLS_VERSION=11076708
+ARG ANDROID_CMDLINE_TOOLS_VERSION=14742923
 RUN wget -q \
         "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_VERSION}_latest.zip" \
         -O /tmp/cmdline-tools.zip && \
@@ -34,8 +34,8 @@ ENV PATH="${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platf
 RUN yes | sdkmanager --licenses > /dev/null 2>&1 && \
     sdkmanager \
         "platform-tools" \
-        "platforms;android-35" \
-        "build-tools;35.0.0"
+        "platforms;android-36" \
+        "build-tools;36.0.0"
 
 # ---------------------------------------------------------------------------
 # Layer: Gradle wrapper + build config files

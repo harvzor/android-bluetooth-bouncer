@@ -1,5 +1,5 @@
 ### Requirement: Hermetic APK build via Docker
-The system SHALL produce a debug APK using only Docker as a host dependency. The build environment (JDK 17, Android SDK, Gradle) SHALL be fully encapsulated in a `Dockerfile` at the project root. No Android SDK, JDK, or Gradle installation SHALL be required on the host.
+The system SHALL produce a debug APK using only Docker as a host dependency. The build environment (JDK 25, Android SDK API 36, Gradle) SHALL be fully encapsulated in a `Dockerfile` at the project root using `eclipse-temurin:25-jdk-noble` as the base image. No Android SDK, JDK, or Gradle installation SHALL be required on the host.
 
 #### Scenario: Build succeeds with only Docker installed
 - **WHEN** a user runs `docker build --output=out .` from the project root on a machine with Docker (BuildKit-capable) and no other Android tooling

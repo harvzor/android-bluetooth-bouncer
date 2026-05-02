@@ -73,3 +73,21 @@ Because blocks are applied at the OS level (see [How It Works](#how-it-works)), 
 **Before uninstalling**, open Bluetooth Bouncer and unblock any devices you want to auto-connect again.
 
 **If you already uninstalled** with devices still blocked, you can fix them from Android's Bluetooth settings — tap the blocked device to connect manually, and the policy will be reset.
+
+---
+
+## Building
+
+The only host dependency is Docker (BuildKit-capable). No Android SDK, JDK, or Gradle installation required.
+
+```bash
+docker build --output=out .
+```
+
+The APK is written to `./out/app-debug.apk`.
+
+To build a release APK:
+
+```bash
+docker build --build-arg BUILD_TYPE=release --output=out .
+```
