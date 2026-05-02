@@ -9,6 +9,9 @@ local.properties
 # Screenshots
 screen*.png
 
+# ADB test artifacts
+.adb-test-tmp/
+
 # Android Studio
 *.iml
 .idea/
