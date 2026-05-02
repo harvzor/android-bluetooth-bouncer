@@ -91,3 +91,18 @@ To build a release APK:
 ```bash
 docker build --build-arg BUILD_TYPE=release --output=out .
 ```
+
+---
+
+## Releases
+
+Pushing a version tag triggers an automated GitHub Actions workflow that builds a release APK and attaches it to the corresponding GitHub Release:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The workflow uses the project's `Dockerfile` — the same hermetic build as above — with `BUILD_TYPE=release`. No secrets or additional configuration are required; the workflow uses the built-in `GITHUB_TOKEN`.
+
+> **Note:** Release APKs are unsigned. To install directly on a device, you will need to sign the APK separately or enable "Install unknown apps" for a sideload-capable source.

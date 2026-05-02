@@ -1,0 +1,29 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build release APK via Docker
+        run: |
+          docker build \
+            --build-arg BUILD_TYPE=release \
+            --output type=local,dest=out \
+            .
+
+      - name: Create GitHub Release and upload APK
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*.apk
