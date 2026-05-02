@@ -1,5 +1,9 @@
 # Bluetooth Bouncer
 
+<p align="center">
+  <img src=".github/cover.png" alt="Bluetooth Bouncer — Android bouncer blocking a Bluetooth device from connecting" width="600">
+</p>
+
 > *Sorry mate, not tonight.*
 
 Android connects to every paired Bluetooth device the moment it comes in range. Your work headset reconnects on a Sunday morning. Your car stereo grabs your phone the second you sit down, even when you just want some peace and quiet. There's no built-in way to say "stay paired, but don't auto-connect" — your only option is to unpair entirely and re-pair when you actually want it.
