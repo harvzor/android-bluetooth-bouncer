@@ -54,6 +54,46 @@ This becomes `$TARGET_DEVICE` — the device name as it appears in the app's lis
 
 ---
 
+## UI Dump Guidance
+
+### Finding the block/allow switch for a device
+
+The card layout in the XML is ordered as: device name → MAC → status label → Connect/Disconnect button → **Alert toggle** → **Block toggle**. The switch nodes appear *after* the Connect button in the XML, not immediately after the device name.
+
+To reliably find the block toggle for `$TARGET_DEVICE`:
+1. Find the index of `text="$TARGET_DEVICE"` in the XML
+2. Take a substring from that position (~2000 chars)
+3. Find all `checkable="true"` nodes in that substring — the **last** one is the block toggle; the one before it is the Alert toggle
+4. The block toggle label is `text="Blocked"` (when on) or `text="Allowed"` (when off), appearing just after it in the XML
+
+The attribute order in the dump is `checkable="..." checked="..." ... bounds="..."` — regex must match this order.
+
+### Section name vs. visual truth
+
+`uiautomator dump` can sometimes report section names that differ from what is visually shown on screen. Specifically:
+- A **blocked device** appears in **BLOCKED** when it is out of Bluetooth scan range
+- A **blocked device** appears in **DETECTED** (with its Blocked toggle still `checked="true"`) when it is within scan range
+
+Both are valid blocked states. When asserting a device is blocked, check the **toggle state** (`checked="true"`) rather than relying solely on the section header name. If a section assertion fails unexpectedly, take a screenshot to confirm the ground truth.
+
+### Polling loops
+
+All polling loops must include `adb shell input keyevent 224` (KEYCODE_WAKEUP) on each iteration to prevent the phone screen from sleeping. Example:
+
+```powershell
+$timeout = 15; $elapsed = 0; $found = $false
+while ($elapsed -lt $timeout) {
+    adb -s $DEVICE shell input keyevent 224
+    adb -s $DEVICE shell uiautomator dump /sdcard/ui.xml 2>$null
+    adb -s $DEVICE pull /sdcard/ui.xml .adb-test-tmp/ui.xml 2>$null
+    $content = Get-Content .adb-test-tmp/ui.xml -Raw
+    if ($content -match 'text="Connected"') { $found = $true; break }
+    Start-Sleep -Seconds 1; $elapsed++
+}
+```
+
+---
+
 ## Phase 0: Clean Slate *(full mode only)*
 
 > Ensure the app is uninstalled and all blocked devices are restored before reinstalling.
@@ -63,7 +103,10 @@ This becomes `$TARGET_DEVICE` — the device name as it appears in the app's lis
 | 0.1 | Launch the existing app (if installed): `adb shell am start -n net.harveywilliams.bluetoothbouncer/.MainActivity` | — |
 | 0.2 | Dump UI. For every device showing `checked="true"` (Blocked switch), tap the switch to unblock it | All devices show "Allowed" |
 | 0.3 | Uninstall: `adb shell pm uninstall net.harveywilliams.bluetoothbouncer` | Exit code 0 |
+| 0.3a | Clear residual app data (required on MIUI — `pm uninstall` does not delete app data due to system backup): `adb shell pm clear net.harveywilliams.bluetoothbouncer` | — (ignore "Unknown package" error if already uninstalled) |
 | 0.4 | Build and install: `.\gradlew.bat installDebug` | Build succeeds, APK installed |
+
+> **MIUI note:** On Xiaomi/MIUI devices, `pm uninstall` does not remove app data. Skipping step 0.3a will cause a Room database schema mismatch crash on first launch because the old database file persists across reinstalls.
 
 ---
 
@@ -74,7 +117,8 @@ This becomes `$TARGET_DEVICE` — the device name as it appears in the app's lis
 | 1.1 | Launch app: `adb shell am start -n net.harveywilliams.bluetoothbouncer/.MainActivity` | App opens |
 | 1.2 | Wait 2s. Dump UI. Check for Bluetooth permission dialog | Permission dialog OR device list visible |
 | 1.3 | Grant BLUETOOTH_CONNECT: `adb shell pm grant net.harveywilliams.bluetoothbouncer android.permission.BLUETOOTH_CONNECT` | — |
-| 1.4 | Wait 1s. Dump UI. Assert device list is visible (not stuck on permission screen) | `text="Bluetooth Bouncer"` visible, no `text="Bluetooth permission required"` |
+| 1.4 | Re-launch app: `adb shell am start -n net.harveywilliams.bluetoothbouncer/.MainActivity` (granting the permission may send the app to the background on some devices) | — |
+| 1.5 | Wait 2s. Dump UI. Assert device list is visible (not stuck on permission screen) | `text="Bluetooth Bouncer"` visible, no `text="Bluetooth permission required"` |
 
 ---
 
@@ -90,7 +134,7 @@ After a fresh install, Shizuku permission has not been granted to the new app in
 | 2.4 | Wait 1s. Dump UI. Assert Shizuku Setup screen | `text="Shizuku Setup"` visible |
 | 2.5 | Assert "Permission Required" state card | `text="Shizuku: Permission Required"` visible |
 | 2.6 | Tap "Grant Shizuku Permission" button | — |
-| 2.7 | Wait for Shizuku permission dialog. Dump UI. Find and tap the "Allow" button in the dialog | Dialog dismissed |
+| 2.7 | Wait 1s. Dump UI. Find and tap the "Allow all the time" button in the Shizuku permission dialog | Dialog dismissed |
 | 2.8 | Wait 2s. Dump UI. Assert auto-navigated back to device list | `text="Bluetooth Bouncer"` visible |
 | 2.9 | Assert Shizuku Ready | `text="Shizuku: Ready"` visible |
 
@@ -102,7 +146,7 @@ After a fresh install, Shizuku permission has not been granted to the new app in
 |------|--------|---------------|
 | 3.1 | Dump UI. Assert app title | `text="Bluetooth Bouncer"` present |
 | 3.2 | Assert Shizuku Ready banner | `text="Shizuku: Ready"` present |
-| 3.3 | Assert sections appear in correct order | If multiple sections present: CONNECTED before DETECTED before BLOCKED before ALLOWED (by vertical position in XML) |
+| 3.3 | Assert sections appear in correct order | If multiple sections present: CONNECTED before DETECTED before BLOCKED before ALLOWED (by character position in XML) |
 | 3.4 | Assert at least one device with a MAC address | At least one node matching `[0-9A-F]{2}:[0-9A-F]{2}:` visible |
 | 3.5 | Assert connected devices show correct labels | Any device in CONNECTED section has `text="Connected"` and a node with `text="Disconnect"` |
 
@@ -122,15 +166,17 @@ Wait for confirmation before proceeding.
 
 | Step | Action | Pass Criteria |
 |------|--------|---------------|
-| 4.1 | Dump UI. Find `$TARGET_DEVICE`. Assert it is in CONNECTED section | Device name visible, `text="Connected"` label present |
-| 4.2 | Find and tap the "Allowed" switch for `$TARGET_DEVICE` | — |
-| 4.3 | Wait 2s. Dump UI. Assert switch is now Blocked | `checked="true"` on the switch node for `$TARGET_DEVICE` |
+| 4.1 | Dump UI. Find `$TARGET_DEVICE`. Assert it is in CONNECTED section | Device name visible between `text="CONNECTED"` and the next section header in XML, `text="Connected"` label present |
+| 4.2 | Find and tap the block toggle for `$TARGET_DEVICE` (see UI Dump Guidance above) | — |
+| 4.3 | Wait 2s. Take a screenshot to confirm. Dump UI. Assert device is blocked | Block toggle `checked="true"` for `$TARGET_DEVICE`; confirmed by screenshot showing orange Blocked toggle |
 | 4.4 | Assert device is no longer in CONNECTED section | `text="Connected"` absent for `$TARGET_DEVICE` |
 | 4.5 | Assert no error snackbar | No `text="Failed"` node present |
-| 4.6 | Tap the "Blocked" switch for `$TARGET_DEVICE` to unblock | — |
-| 4.7 | Wait 1s. Dump UI. Assert switch shows Allowed | `checked="false"` on the switch node for `$TARGET_DEVICE` |
-| 4.8 | Poll up to 10s. Assert device reconnects | `text="Connected"` present for `$TARGET_DEVICE` |
+| 4.6 | Tap the block toggle for `$TARGET_DEVICE` to unblock | — |
+| 4.7 | Wait 1s. Dump UI. Assert toggle shows Allowed | Block toggle `checked="false"` for `$TARGET_DEVICE` |
+| 4.8 | Poll up to 15s (with KEYCODE_WAKEUP keepalive). Assert device reconnects | `text="Connected"` present for `$TARGET_DEVICE` in CONNECTED section |
 | 4.9 | Assert no error snackbar | No `text="Failed"` node present |
+
+> **Target device note:** Some Bluetooth devices (e.g. headphones) auto-power off after being disconnected for a period. If `$TARGET_DEVICE` powers off during the poll in step 4.8, turn it back on and re-poll.
 
 ---
 
@@ -138,32 +184,34 @@ Wait for confirmation before proceeding.
 
 | Step | Action | Pass Criteria |
 |------|--------|---------------|
-| 5.1 | Tap the "Allowed" switch for `$TARGET_DEVICE` to block it | `checked="true"` on switch, device leaves CONNECTED |
+| 5.1 | Tap the block toggle for `$TARGET_DEVICE` to block it | Block toggle `checked="true"`, device leaves CONNECTED section |
 | 5.2 | Force-stop app: `adb shell am force-stop net.harveywilliams.bluetoothbouncer` | — |
 | 5.3 | Relaunch: `adb shell am start -n net.harveywilliams.bluetoothbouncer/.MainActivity` | — |
-| 5.4 | Wait 2s. Dump UI. Assert `$TARGET_DEVICE` is still in BLOCKED section | Device name visible under `text="BLOCKED"` header, switch `checked="true"` |
+| 5.4 | Wait 2s. Take a screenshot to confirm. Dump UI. Assert `$TARGET_DEVICE` is still blocked | Block toggle `checked="true"` for `$TARGET_DEVICE`; device is in BLOCKED or DETECTED section (both are valid — see UI Dump Guidance) |
 
 ---
 
 ## Phase 6: Connect/Disconnect (Blocked Device)
 
-`$TARGET_DEVICE` should be blocked (from Phase 5).
+`$TARGET_DEVICE` should be blocked (from Phase 5). Turn it on if it has powered off.
 
 | Step | Action | Pass Criteria |
 |------|--------|---------------|
-| 6.1 | Dump UI. Find and tap "Connect" button for `$TARGET_DEVICE` | — |
-| 6.2 | Wait 1s. Dump UI. Check for CDM association dialog (system UI, different package). If present, find and tap the confirm/associate button | Dialog dismissed |
-| 6.3 | Poll up to 10s. Assert "Temporarily connected" | `text="Temporarily connected"` visible for `$TARGET_DEVICE` |
-| 6.4 | Assert "Disconnect" button visible | `text="Disconnect"` present for `$TARGET_DEVICE` |
+| 6.1 | Dump UI. Find and tap the "Connect" button for `$TARGET_DEVICE`. The Connect button is a clickable container — find by `clickable="true"` node whose child has `text="Connect"`, near `$TARGET_DEVICE`'s position in the XML | — |
+| 6.2 | Wait 1s. Dump UI. Check for CDM association dialog (system UI, different package). If present, find and tap the "Allow" button | Dialog dismissed |
+| 6.3 | Poll up to 15s (with KEYCODE_WAKEUP keepalive). Assert "Temporarily connected" | `text="Temporarily connected"` visible for `$TARGET_DEVICE` |
+| 6.4 | Assert "Disconnect" button visible | Clickable container with child `text="Disconnect"` near `$TARGET_DEVICE` |
 | 6.5 | Tap "Disconnect" | — |
-| 6.6 | Wait 3s. Dump UI. Assert device re-blocked | Switch `checked="true"`, device no longer in CONNECTED |
+| 6.6 | Wait 3s. Take a screenshot to confirm. Dump UI. Assert device re-blocked | Block toggle `checked="true"` for `$TARGET_DEVICE`; device not in CONNECTED section |
 | 6.7 | Tap "Connect" again | — |
 | 6.8 | Wait 1s. Dump UI. Assert NO CDM dialog this time (association cached from step 6.2) | No system dialog visible |
-| 6.9 | Poll up to 10s. Assert "Temporarily connected" again | `text="Temporarily connected"` visible |
+| 6.9 | Poll up to 15s (with KEYCODE_WAKEUP keepalive). Assert "Temporarily connected" again | `text="Temporarily connected"` visible |
 | 6.10 | Tap "Disconnect" | — |
 | 6.11 | Assert no error snackbar throughout | No `text="Failed"` node at any point |
 
-> **Known limitation:** Step 6.2 involves a system dialog (CompanionDeviceManager association). It should be findable via `uiautomator dump` as it is standard Android UI, but this has not been fully validated. If the dialog cannot be found/tapped, pause and ask the user to tap it manually, then continue.
+> **CDM dialog:** Step 6.2 involves a system dialog (CompanionDeviceManager association). It is findable via `uiautomator dump`. The confirm button text may be "Allow" or "Associate" — match broadly. If not found after 2s, pause and ask the user to tap it manually, then continue.
+>
+> **Target device note:** If `$TARGET_DEVICE` auto-powers off between steps (e.g. during the blocked period before 6.1), turn it back on before tapping Connect.
 
 ---
 
@@ -171,7 +219,7 @@ Wait for confirmation before proceeding.
 
 | Step | Action |
 |------|--------|
-| 7.1 | Restore `$TARGET_DEVICE` to its original state (blocked if it was blocked before Phase 0, allowed otherwise) |
+| 7.1 | Restore `$TARGET_DEVICE` to its original state. Unblock it by tapping the block toggle (find via the BLOCKED section's raw XML — search between `text="BLOCKED"` and `text="ALLOWED"` for the `checked="true"` node with its bounds) |
 | 7.2 | Delete `.adb-test-tmp/`: `Remove-Item -Recurse -Force .adb-test-tmp` |
 | 7.3 | Clean up device: `adb shell rm -f /sdcard/ui.xml /sdcard/screen.png` |
 | 7.4 | Report test summary — list each phase with PASS/FAIL and any notes |
@@ -210,7 +258,10 @@ If any step fails, include the step number, what was expected, and what was actu
 ## Known Limitations
 
 - **No CI support** — tests require a physical device with Shizuku running and a live Bluetooth device in range
-- **Reconnection timing** — Bluetooth reconnection after unblock is async; polls up to 10s
+- **Reconnection timing** — Bluetooth reconnection after unblock is async; polls up to 15s
 - **CDM dialog** — Phase 6 step 6.2 involves system UI that may need manual intervention on first run
 - **No testTag modifiers** — element finding relies on text content; if UI text changes, update this document
+- **MIUI `pm uninstall` preserves app data** — always follow uninstall with `pm clear` (step 0.3a) to avoid Room schema mismatch crash
+- **Blocked device section** — a blocked device appears in BLOCKED when out of scan range, DETECTED when in range; both are valid; assert on toggle state not section name
+- **Target device auto-off** — headphones and similar devices power off after being blocked/disconnected for a period; turn them back on if they sleep during a test phase
 - **Bumble** — future automated Bluetooth device simulation; see `TESTING_WITH_BUMBLE.md`
