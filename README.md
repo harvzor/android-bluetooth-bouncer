@@ -6,9 +6,11 @@
 
 <p align="center"><em>"Sorry mate, not tonight."</em></p>
 
-Android connects to every paired Bluetooth device the moment it comes in range. Your work headset reconnects on a Sunday morning. Your car stereo grabs your phone the second you sit down, even when you just want some peace and quiet. There's no built-in way to say "stay paired, but don't auto-connect" — your only option is to unpair entirely and re-pair when you actually want it.
+---
 
-Bluetooth Bouncer fixes this. Per-device control over what gets let in.
+Android auto-connects to every paired Bluetooth device in range. The only built-in fix is to unpair entirely.
+
+Bluetooth Bouncer adds a missing toggle: per-device control over auto-connect. Stay paired, connect only when you want to.
 
 ## Features
 
