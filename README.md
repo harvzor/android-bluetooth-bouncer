@@ -10,8 +10,6 @@ Android connects to every paired Bluetooth device the moment it comes in range. 
 
 Bluetooth Bouncer fixes this. Per-device control over what gets let in.
 
----
-
 ## Features
 
 | Feature | What it does |
@@ -24,8 +22,6 @@ Bluetooth Bouncer fixes this. Per-device control over what gets let in.
 | **Re-pair Protection** | If you unpair and re-pair a blocked device, the block is automatically re-applied. No surprise reconnections. |
 | **Live Status** | See at a glance which devices are connected, detected nearby, or were recently seen. |
 
----
-
 ## Requirements
 
 - **Android 12 or higher** (API 31+)
@@ -34,8 +30,6 @@ Bluetooth Bouncer fixes this. Per-device control over what gets let in.
 > **Alert and Connect/Disconnect features** require Android 13+ (API 33+). The toggles and buttons simply won't appear on older versions.
 
 > **Note on Disconnect for allowed devices:** Disconnecting an allowed device sends a disconnect signal to its Bluetooth profiles, but Android may immediately reconnect it because the connection policy is still "allowed." If you want a persistent disconnect, use the Block toggle instead.
-
----
 
 ## Getting Started
 
@@ -47,8 +41,6 @@ Bluetooth Bouncer fixes this. Per-device control over what gets let in.
 
 That's it. The device will stay paired but won't auto-connect anymore.
 
----
-
 ## How It Works
 
 Android has a hidden system API called `setConnectionPolicy` that controls whether a Bluetooth device is permitted to auto-connect. It's normally off-limits to third-party apps — only system apps can use it.
@@ -56,8 +48,6 @@ Android has a hidden system API called `setConnectionPolicy` that controls wheth
 Shizuku runs a small background process with elevated shell privileges, and Bluetooth Bouncer uses it to call this API on your behalf. No root required.
 
 Because the policy is applied at the OS level, it persists even when Bluetooth Bouncer isn't running. There's no background service draining your battery — once a device is blocked, Android itself enforces it.
-
----
 
 ## Permissions
 
@@ -68,8 +58,6 @@ Because the policy is applied at the OS level, it persists even when Bluetooth B
 | Receive Boot Completed | Re-apply your blocks after restarting your phone |
 | Companion Device Presence | Detect when blocked devices come into or leave range (for the Alert feature) |
 
----
-
 ## Uninstalling
 
 Because blocks are applied at the OS level (see [How It Works](#how-it-works)), they persist even after Bluetooth Bouncer is uninstalled. Android does not give apps a chance to clean up before removal.
@@ -77,8 +65,6 @@ Because blocks are applied at the OS level (see [How It Works](#how-it-works)), 
 **Before uninstalling**, open Bluetooth Bouncer and unblock any devices you want to auto-connect again.
 
 **If you already uninstalled** with devices still blocked, you can fix them from Android's Bluetooth settings — tap the blocked device to connect manually, and the policy will be reset.
-
----
 
 ## Building
 
@@ -96,8 +82,6 @@ To build a release APK:
 docker build --build-arg BUILD_TYPE=release --output=out .
 ```
 
----
-
 ## Releases
 
 Pushing a version tag triggers an automated GitHub Actions workflow that builds a release APK and attaches it to the corresponding GitHub Release:
@@ -110,8 +94,6 @@ git push origin v1.0.0
 The workflow uses the project's `Dockerfile` — the same hermetic build as above — with `BUILD_TYPE=release`. No secrets or additional configuration are required; the workflow uses the built-in `GITHUB_TOKEN`.
 
 > **Note:** Release APKs are unsigned. To install directly on a device, you will need to sign the APK separately or enable "Install unknown apps" for a sideload-capable source.
-
----
 
 ## App Icon
 
