@@ -68,7 +68,10 @@ RUN ./gradlew dependencies --no-daemon
 COPY app/ app/
 
 ARG BUILD_TYPE=debug
-RUN ./gradlew assemble${BUILD_TYPE^} --no-daemon && \
+ARG VERSION
+RUN VERSION_FLAG="" && \
+    [ -n "${VERSION}" ] && VERSION_FLAG="-PappVersionName=${VERSION}"; \
+    ./gradlew assemble${BUILD_TYPE^} ${VERSION_FLAG} --no-daemon && \
     mkdir -p /out && \
     find app/build/outputs/apk -name "*.apk" -exec cp {} /out/ \;
 

@@ -12,8 +12,10 @@ android {
         applicationId = "net.harveywilliams.bluetoothbouncer"
         minSdk = 31
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        val appVersion = findProperty("appVersionName")?.toString()?.takeIf { it.isNotBlank() }
+        val parsedParts = appVersion?.split(".")?.mapNotNull { it.toIntOrNull() }?.takeIf { it.size == 3 }
+        versionName = if (parsedParts != null) appVersion!! else "0.0.0-dev"
+        versionCode = if (parsedParts != null) parsedParts[0] * 10_000 + parsedParts[1] * 100 + parsedParts[2] else 1
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
