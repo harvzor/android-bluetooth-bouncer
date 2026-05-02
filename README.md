@@ -63,3 +63,13 @@ Because the policy is applied at the OS level, it persists even when Bluetooth B
 | Notifications | Alert you when a blocked device is nearby (you can decline this) |
 | Receive Boot Completed | Re-apply your blocks after restarting your phone |
 | Companion Device Presence | Detect when blocked devices come into or leave range (for the Alert feature) |
+
+---
+
+## Uninstalling
+
+Because blocks are applied at the OS level (see [How It Works](#how-it-works)), they persist even after Bluetooth Bouncer is uninstalled. Android does not give apps a chance to clean up before removal.
+
+**Before uninstalling**, open Bluetooth Bouncer and unblock any devices you want to auto-connect again.
+
+**If you already uninstalled** with devices still blocked, you can fix them from Android's Bluetooth settings — tap the blocked device to connect manually, and the policy will be reset.
