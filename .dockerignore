@@ -1,0 +1,16 @@
+# Host-specific
+local.properties
+
+# Generated / build output
+.gradle/
+build/
+app/build/
+out/
+
+# IDE
+.idea/
+.kotlin/
+*.iml
+
+# Version control
+.git/
