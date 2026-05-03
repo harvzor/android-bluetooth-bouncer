@@ -17,8 +17,11 @@
 
 ## Build & Tooling
 - **Gradle wrapper**: No system-wide Gradle install. The wrapper (`gradlew.bat` + `gradle-wrapper.jar`) is checked in; regenerate with `gradlew.bat wrapper --gradle-version <version>` if needed
-- **`ANDROID_HOME` per shell**: Set `$env:ANDROID_HOME = "<your SDK path>"` before every `gradlew.bat` invocation
+- **`ANDROID_HOME` per shell**: Must be set before every `gradlew.bat` invocation. Locate your SDK path in Android Studio → *SDK Manager → Android SDK Location*. Example: `$env:ANDROID_HOME = "C:\Users\<you>\AppData\Local\Android\Sdk"`
 - **Java**: JDK 25 (Temurin) is required. Version is pinned in `.java-version` at the repo root.
+- **Build command**: `$env:ANDROID_HOME = "<sdk-path>"; .\gradlew.bat assembleDebug` — use a 60000 ms tool timeout; when the output contains `BUILD SUCCESSFUL`, the build is done — proceed immediately without waiting for anything further
+- **APK output**: `app\build\outputs\apk\debug\app-debug.apk`
+- **Install to device**: `& "$env:ANDROID_HOME\platform-tools\adb.exe" install -r app\build\outputs\apk\debug\app-debug.apk`
 
 ## Android API Gotchas
 - **`BluetoothProfile.HID_HOST`**: Not in the compile-time SDK — use integer literal `4` directly
