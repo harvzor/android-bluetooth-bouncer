@@ -86,7 +86,13 @@ class DeviceWatcherService : CompanionDeviceService() {
             }
 
             if (!entity.isTemporarilyAllowed) {
-                Log.d(TAG, "Device ${entity.deviceName} is not temporarily allowed — no action needed")
+                // Cancel any active notification (e.g. a "nearby" notification left by a prior
+                // manual disconnect) so it does not orphan in the shade after the device departs.
+                if (entity.isAlertEnabled) {
+                    NotificationManagerCompat.from(this@DeviceWatcherService)
+                        .cancel(WatchNotificationHelper.notificationId(entity.macAddress))
+                }
+                Log.d(TAG, "Device ${entity.deviceName} is not temporarily allowed — no re-block needed")
                 return@launch
             }
 

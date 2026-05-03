@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import androidx.core.app.NotificationManagerCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -19,7 +18,7 @@ import net.harveywilliams.bluetoothbouncer.shizuku.ShizukuHelper
  * 1. Calls [ShizukuHelper.disconnectDevice] to force-disconnect all profiles.
  * 2. Calls [ShizukuHelper.setConnectionPolicy] with [ShizukuHelper.POLICY_FORBIDDEN] to re-block.
  * 3. Clears `isTemporarilyAllowed = false` in Room.
- * 4. Dismisses the notification.
+ * 4. Replaces the notification with the "Nearby" notification so the user can re-allow quickly.
  * 5. On failure, posts an error notification instead.
  *
  * Uses [goAsync] to keep the receiver alive long enough for the Shizuku calls to complete.
@@ -32,7 +31,6 @@ class DisconnectReceiver : BroadcastReceiver() {
         val macAddress = intent.getStringExtra(WatchNotificationHelper.EXTRA_MAC_ADDRESS)
             ?: return
         val deviceName = intent.getStringExtra(WatchNotificationHelper.EXTRA_DEVICE_NAME) ?: ""
-        val notifId = intent.getIntExtra(WatchNotificationHelper.EXTRA_NOTIFICATION_ID, 0)
 
         val pendingResult = goAsync()
         val app = context.applicationContext as BluetoothBouncerApp
@@ -52,7 +50,7 @@ class DisconnectReceiver : BroadcastReceiver() {
                 )
                 if (policyResult.isSuccess) {
                     app.database.blockedDeviceDao().updateIsTemporarilyAllowed(macAddress, false)
-                    NotificationManagerCompat.from(context).cancel(notifId)
+                    WatchNotificationHelper.postNearbyNotification(context, macAddress, deviceName)
                     Log.d(TAG, "Disconnected and re-blocked $macAddress")
                 } else {
                     Log.w(TAG, "setConnectionPolicy failed for $macAddress: ${policyResult.exceptionOrNull()}")

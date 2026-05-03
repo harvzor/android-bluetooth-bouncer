@@ -55,15 +55,27 @@ object WatchNotificationHelper {
     /**
      * Posts the "device nearby" notification for [entity].
      *
-     * The notification includes an "Allow temporarily" action that fires [TemporaryAllowReceiver].
+     * Delegates to [postNearbyNotification] with macAddress and deviceName.
      */
     fun postNearbyNotification(context: Context, entity: BlockedDeviceEntity) {
-        val notifId = notificationId(entity.macAddress)
+        postNearbyNotification(context, entity.macAddress, entity.deviceName)
+    }
+
+    /**
+     * Posts (or replaces) the "device nearby" notification for the given device.
+     *
+     * Uses the same [notificationId] as all other per-device notifications so that an existing
+     * "temporarily allowed" notification is updated in-place — silently, with no heads-up,
+     * sound, or vibration. Includes an "Allow temporarily" action that fires
+     * [TemporaryAllowReceiver].
+     */
+    fun postNearbyNotification(context: Context, macAddress: String, deviceName: String) {
+        val notifId = notificationId(macAddress)
 
         val allowIntent = Intent(context, TemporaryAllowReceiver::class.java).apply {
             action = ACTION_ALLOW_TEMPORARILY
-            putExtra(EXTRA_MAC_ADDRESS, entity.macAddress)
-            putExtra(EXTRA_DEVICE_NAME, entity.deviceName)
+            putExtra(EXTRA_MAC_ADDRESS, macAddress)
+            putExtra(EXTRA_DEVICE_NAME, deviceName)
             putExtra(EXTRA_NOTIFICATION_ID, notifId)
         }
         val allowPendingIntent = PendingIntent.getBroadcast(
@@ -75,7 +87,7 @@ object WatchNotificationHelper {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_bluetooth)
-            .setContentTitle(entity.deviceName)
+            .setContentTitle(deviceName)
             .setContentText("Nearby — tap to allow for this session")
             .addAction(0, "Allow temporarily", allowPendingIntent)
             .setAutoCancel(false)
