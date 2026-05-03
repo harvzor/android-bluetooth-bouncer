@@ -9,6 +9,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import net.harveywilliams.bluetoothbouncer.R
 import net.harveywilliams.bluetoothbouncer.data.BlockedDeviceEntity
+import net.harveywilliams.bluetoothbouncer.receivers.DisconnectReceiver
 import net.harveywilliams.bluetoothbouncer.receivers.TemporaryAllowReceiver
 
 /**
@@ -22,6 +23,8 @@ object WatchNotificationHelper {
     const val CHANNEL_ID = "device_watch"
     const val ACTION_ALLOW_TEMPORARILY =
         "net.harveywilliams.bluetoothbouncer.ACTION_ALLOW_TEMPORARILY"
+    const val ACTION_DISCONNECT =
+        "net.harveywilliams.bluetoothbouncer.ACTION_DISCONNECT"
 
     const val EXTRA_MAC_ADDRESS = "extra_mac_address"
     const val EXTRA_DEVICE_NAME = "extra_device_name"
@@ -78,6 +81,42 @@ object WatchNotificationHelper {
             .setAutoCancel(false)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+
+        NotificationManagerCompat.from(context).notify(notifId, notification)
+    }
+
+    /**
+     * Replaces the "nearby" notification with a "temporarily allowed" notification.
+     *
+     * Uses the same [notificationId] so the entry in the shade is updated in-place with no
+     * heads-up banner, sound, or vibration. Includes a "Disconnect" action that fires
+     * [DisconnectReceiver].
+     */
+    fun postAllowedNotification(context: Context, macAddress: String, deviceName: String) {
+        val notifId = notificationId(macAddress)
+
+        val disconnectIntent = Intent(context, DisconnectReceiver::class.java).apply {
+            action = ACTION_DISCONNECT
+            putExtra(EXTRA_MAC_ADDRESS, macAddress)
+            putExtra(EXTRA_DEVICE_NAME, deviceName)
+            putExtra(EXTRA_NOTIFICATION_ID, notifId)
+        }
+        val disconnectPendingIntent = PendingIntent.getBroadcast(
+            context,
+            notifId,
+            disconnectIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification_bluetooth)
+            .setContentTitle(deviceName)
+            .setContentText("Temporarily allowed")
+            .addAction(0, "Disconnect", disconnectPendingIntent)
+            .setAutoCancel(false)
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
 
         NotificationManagerCompat.from(context).notify(notifId, notification)

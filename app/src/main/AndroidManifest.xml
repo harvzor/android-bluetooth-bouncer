@@ -63,6 +63,15 @@
             </intent-filter>
         </receiver>
 
+        <!-- Disconnect notification action receiver -->
+        <receiver
+            android:name=".receivers.DisconnectReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="net.harveywilliams.bluetoothbouncer.ACTION_DISCONNECT" />
+            </intent-filter>
+        </receiver>
+
         <!-- CompanionDeviceService for background Bluetooth presence detection (API 33+) -->
         <service
             android:name=".service.DeviceWatcherService"

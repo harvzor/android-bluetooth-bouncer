@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import androidx.core.app.NotificationManagerCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -18,7 +17,7 @@ import net.harveywilliams.bluetoothbouncer.shizuku.ShizukuHelper
  * On receipt:
  * 1. Calls [ShizukuHelper.setConnectionPolicy] with [ShizukuHelper.POLICY_ALLOWED].
  * 2. Sets `isTemporarilyAllowed = true` in Room on success.
- * 3. Dismisses the originating notification.
+ * 3. Replaces the "nearby" notification with the "temporarily allowed" notification.
  * 4. On failure, posts an error notification instead.
  *
  * Uses [goAsync] to keep the receiver alive long enough for the Shizuku call to complete.
@@ -31,7 +30,6 @@ class TemporaryAllowReceiver : BroadcastReceiver() {
         val macAddress = intent.getStringExtra(WatchNotificationHelper.EXTRA_MAC_ADDRESS)
             ?: return
         val deviceName = intent.getStringExtra(WatchNotificationHelper.EXTRA_DEVICE_NAME) ?: ""
-        val notifId = intent.getIntExtra(WatchNotificationHelper.EXTRA_NOTIFICATION_ID, 0)
 
         val pendingResult = goAsync()
         val app = context.applicationContext as BluetoothBouncerApp
@@ -44,7 +42,7 @@ class TemporaryAllowReceiver : BroadcastReceiver() {
                 )
                 if (result.isSuccess) {
                     app.database.blockedDeviceDao().updateIsTemporarilyAllowed(macAddress, true)
-                    NotificationManagerCompat.from(context).cancel(notifId)
+                    WatchNotificationHelper.postAllowedNotification(context, macAddress, deviceName)
                     Log.d(TAG, "Temporarily allowed $macAddress")
                 } else {
                     Log.w(TAG, "setConnectionPolicy failed for $macAddress: ${result.exceptionOrNull()}")

@@ -39,8 +39,10 @@ import kotlinx.coroutines.withTimeout
 import net.harveywilliams.bluetoothbouncer.BluetoothBouncerApp
 import net.harveywilliams.bluetoothbouncer.data.BlockedDeviceDao
 import net.harveywilliams.bluetoothbouncer.data.BlockedDeviceEntity
+import net.harveywilliams.bluetoothbouncer.notification.WatchNotificationHelper
 import net.harveywilliams.bluetoothbouncer.service.DeviceWatchManager
 import net.harveywilliams.bluetoothbouncer.shizuku.ShizukuHelper
+import androidx.core.app.NotificationManagerCompat
 
 class DeviceListViewModel(
     application: Application,
@@ -486,6 +488,8 @@ class DeviceListViewModel(
                     if (policyResult.isSuccess) {
                         if (device.isTemporarilyAllowed) {
                             blockedDeviceDao.updateIsTemporarilyAllowed(device.address, false)
+                            NotificationManagerCompat.from(getApplication())
+                                .cancel(WatchNotificationHelper.notificationId(device.address))
                         }
                     } else {
                         Log.w(TAG, "disconnectDevice: re-block failed for ${device.address}: ${policyResult.exceptionOrNull()?.message}")

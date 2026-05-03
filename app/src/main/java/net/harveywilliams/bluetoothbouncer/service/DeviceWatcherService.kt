@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import net.harveywilliams.bluetoothbouncer.BluetoothBouncerApp
 import net.harveywilliams.bluetoothbouncer.notification.WatchNotificationHelper
 import net.harveywilliams.bluetoothbouncer.shizuku.ShizukuHelper
+import androidx.core.app.NotificationManagerCompat
 
 /**
  * Background presence-detection service for watched blocked devices.
@@ -100,6 +101,8 @@ class DeviceWatcherService : CompanionDeviceService() {
             )
             if (result.isSuccess) {
                 dao.updateIsTemporarilyAllowed(entity.macAddress, false)
+                NotificationManagerCompat.from(this@DeviceWatcherService)
+                    .cancel(WatchNotificationHelper.notificationId(entity.macAddress))
                 Log.d(TAG, "Re-blocked ${entity.deviceName} after departure")
             } else {
                 Log.e(TAG, "Failed to re-block ${entity.deviceName}: ${result.exceptionOrNull()}")
