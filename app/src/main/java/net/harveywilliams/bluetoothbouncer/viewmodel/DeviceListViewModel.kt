@@ -579,6 +579,7 @@ class DeviceListViewModel(
             override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
                 a2dpProxy = proxy as? BluetoothA2dp
                 Log.d(TAG, "A2DP proxy connected")
+                getApplication<BluetoothBouncerApp>().refreshSignal.tryEmit(Unit)
             }
             override fun onServiceDisconnected(profile: Int) {
                 a2dpProxy = null
@@ -590,6 +591,7 @@ class DeviceListViewModel(
             override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
                 headsetProxy = proxy as? BluetoothHeadset
                 Log.d(TAG, "Headset proxy connected")
+                getApplication<BluetoothBouncerApp>().refreshSignal.tryEmit(Unit)
             }
             override fun onServiceDisconnected(profile: Int) {
                 headsetProxy = null
@@ -631,9 +633,12 @@ class DeviceListViewModel(
         // ACL-level connected addresses — fallback for HID keyboards/mice and other profiles
         // not covered by the proxies above. Excluded for blocked devices to avoid false
         // positives from the Bluetooth stack maintaining an ACL link for policy enforcement.
+        // Temporarily-allowed devices are exempt from this exclusion: they are legitimately
+        // connected with the user's intent and must not be filtered out while profile proxies
+        // are still loading on a cold start.
         val aclConnected = getAclConnectedAddresses()
 
-        val connectedAddresses = profileConnected + (aclConnected - blockedAddresses)
+        val connectedAddresses = profileConnected + (aclConnected - (blockedAddresses - temporarilyAllowedAddresses))
 
         // ACL-present but not profile-connected — covers blocked devices nearby and other
         // paired devices that have an ACL link without a profile connection.

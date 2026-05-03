@@ -18,10 +18,47 @@ The app SHALL register a BroadcastReceiver for `ACTION_ACL_CONNECTED`, `ACTION_A
 - **THEN** the device displays the "Detected" indicator
 - **THEN** the device does NOT display the "Connected" indicator
 
-#### Scenario: Temporarily-allowed device connects its profiles
-- **WHEN** a temporarily-allowed device connects its A2DP or HFP profiles while the app is in the foreground (over an existing ACL link, without a new ACL_CONNECTED event)
+### Requirement: Temporarily-allowed device connects its profiles
+The app SHALL refresh the device list when a temporarily-allowed device's A2DP or HFP profile proxy becomes available, covering both foreground (via Bluetooth broadcast) and cold-start (via proxy `onServiceConnected`) scenarios. After any such refresh, the device SHALL display "Temporarily connected".
+
+#### Scenario: Temporarily-allowed device connects its profiles while app is in foreground
+- **WHEN** a temporarily-allowed device connects its A2DP or HFP profiles while the app is in the foreground (over an existing ACL link, triggering a profile connection broadcast)
 - **THEN** the device list refreshes within 1 second
 - **THEN** the device displays "Temporarily connected"
+
+#### Scenario: Temporarily-allowed device is already profile-connected when app cold-starts
+- **WHEN** the app opens cold after a "Allow temporarily" notification action and the device has already established its A2DP or HFP profiles
+- **THEN** `refreshDeviceList()` on first render shows the device as "Temporarily connected"
+
+### Requirement: Device list refreshes when profile proxies become available
+The app SHALL trigger a device list refresh whenever a Bluetooth profile proxy (A2DP or Headset) becomes available via `onServiceConnected`, so that devices which connected before the app opened are reflected with accurate profile-connection state.
+
+#### Scenario: A2DP proxy becomes available
+- **WHEN** the A2DP profile proxy's `onServiceConnected` fires after the device list screen is active
+- **THEN** the device list refreshes to reflect current A2DP connection state
+
+#### Scenario: Headset proxy becomes available
+- **WHEN** the Headset profile proxy's `onServiceConnected` fires after the device list screen is active
+- **THEN** the device list refreshes to reflect current HFP connection state
+
+#### Scenario: Both proxies arrive close together (debounce)
+- **WHEN** both the A2DP and Headset proxies' `onServiceConnected` callbacks fire within a short window
+- **THEN** the app debounces the refreshes and updates the device list once rather than twice
+
+### Requirement: Temporarily-allowed devices are not excluded from ACL-based connection detection
+The app SHALL include temporarily-allowed devices when evaluating ACL connections, so that an ACL link on a temporarily-allowed device is detected and displayed correctly regardless of whether profile proxies have been resolved.
+
+#### Scenario: Temporarily-allowed device has an ACL link but profile proxies are null
+- **WHEN** a temporarily-allowed device has an active ACL link and the A2DP/HFP profile proxies have not yet connected
+- **THEN** the device is NOT excluded from ACL detection and its ACL connection is still surfaced in the device list
+
+#### Scenario: Blocked (non-temp-allowed) device has an ACL link
+- **WHEN** a blocked device (not temporarily allowed) has an active ACL link
+- **THEN** the device displays the "Detected" indicator, consistent with existing blocked-device behaviour
+
+#### Scenario: Cold-start temp-allowed device
+- **WHEN** the app opens cold, a temporarily-allowed device has an ACL link, and profile proxies have not yet resolved
+- **THEN** the device is detected via ACL and displayed in the device list without being filtered out
 
 #### Scenario: Multiple devices change state rapidly
 - **WHEN** multiple Bluetooth connection events fire within a short time window (e.g., Bluetooth toggled off)
