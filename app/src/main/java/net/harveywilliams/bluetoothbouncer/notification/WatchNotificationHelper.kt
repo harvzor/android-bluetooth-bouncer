@@ -124,7 +124,7 @@ object WatchNotificationHelper {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_bluetooth)
             .setContentTitle(deviceName)
-            .setContentText("Temporarily allowed")
+            .setContentText("Temporarily connected")
             .addAction(0, "Disconnect", disconnectPendingIntent)
             .setAutoCancel(false)
             .setOnlyAlertOnce(true)

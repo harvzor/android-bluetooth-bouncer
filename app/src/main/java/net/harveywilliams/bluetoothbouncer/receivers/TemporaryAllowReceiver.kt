@@ -16,9 +16,10 @@ import net.harveywilliams.bluetoothbouncer.shizuku.ShizukuHelper
  *
  * On receipt:
  * 1. Calls [ShizukuHelper.setConnectionPolicy] with [ShizukuHelper.POLICY_ALLOWED].
- * 2. Sets `isTemporarilyAllowed = true` in Room on success.
- * 3. Replaces the "nearby" notification with the "temporarily allowed" notification.
- * 4. On failure, posts an error notification instead.
+ * 2. Sets `isTemporarilyAllowed = true` in Room on success — the Application-scoped
+ *    notification observer reacts to this write and posts the "temporarily allowed"
+ *    notification automatically.
+ * 3. On failure, posts an error notification instead.
  *
  * Uses [goAsync] to keep the receiver alive long enough for the Shizuku call to complete.
  */
@@ -42,7 +43,8 @@ class TemporaryAllowReceiver : BroadcastReceiver() {
                 )
                 if (result.isSuccess) {
                     app.database.blockedDeviceDao().updateIsTemporarilyAllowed(macAddress, true)
-                    WatchNotificationHelper.postAllowedNotification(context, macAddress, deviceName)
+                    // Room write triggers the Application-scoped notification observer,
+                    // which will post the "Temporarily allowed" notification automatically.
                     Log.d(TAG, "Temporarily allowed $macAddress")
                 } else {
                     Log.w(TAG, "setConnectionPolicy failed for $macAddress: ${result.exceptionOrNull()}")

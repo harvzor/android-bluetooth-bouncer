@@ -13,9 +13,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import net.harveywilliams.bluetoothbouncer.BluetoothBouncerApp
-import net.harveywilliams.bluetoothbouncer.notification.WatchNotificationHelper
 import net.harveywilliams.bluetoothbouncer.shizuku.ShizukuHelper
-import androidx.core.app.NotificationManagerCompat
+import kotlinx.coroutines.flow.update
 
 /**
  * Background presence-detection service for watched blocked devices.
@@ -55,14 +54,10 @@ class DeviceWatcherService : CompanionDeviceService() {
                 Log.d(TAG, "Updating stale cdmAssociationId ${entity.cdmAssociationId} -> $associationId for ${entity.macAddress}")
                 dao.updateCdmAssociationId(entity.macAddress, associationId)
             }
-            if (!entity.isTemporarilyAllowed && entity.isAlertEnabled) {
-                WatchNotificationHelper.postNearbyNotification(this@DeviceWatcherService, entity)
-                Log.d(TAG, "Posted nearby notification for ${entity.deviceName}")
-            } else if (entity.isTemporarilyAllowed) {
-                Log.d(TAG, "Device ${entity.deviceName} already temporarily allowed — skipping notification")
-            } else {
-                Log.d(TAG, "Device ${entity.deviceName} has no Alert enabled — skipping notification")
-            }
+            // Add to nearby set — the Application-scoped notification observer will post the
+            // correct notification based on the device's current isTemporarilyAllowed / isAlertEnabled state.
+            app.nearbyDevices.update { it + entity.macAddress }
+            Log.d(TAG, "Device appeared: ${entity.deviceName} (${entity.macAddress})")
         }
     }
 
@@ -82,15 +77,20 @@ class DeviceWatcherService : CompanionDeviceService() {
             val dao = app.database.blockedDeviceDao()
             val entity = resolveEntity(dao, associationId, mac) ?: run {
                 Log.w(TAG, "onDeviceDisappeared: no entity found for associationId=$associationId mac=$mac")
+                // Unknown device — best-effort remove from nearby set using raw MAC if available
+                if (mac != null) app.nearbyDevices.update { it - mac }
                 return@launch
             }
 
             if (!entity.isTemporarilyAllowed) {
-                Log.d(TAG, "Device ${entity.deviceName} is not temporarily allowed — no action needed")
+                // Not temp-allowed: just remove from nearby set so the notification is cancelled.
+                app.nearbyDevices.update { it - entity.macAddress }
+                Log.d(TAG, "Device ${entity.deviceName} left range — removed from nearby set")
                 return@launch
             }
 
             if (isDeviceAclConnected(entity.macAddress)) {
+                // Still ACL-connected — defer re-block. Keep in nearby set; notification stays visible.
                 Log.d(TAG, "Device ${entity.deviceName} still ACL-connected — deferring re-block")
                 return@launch
             }
@@ -101,8 +101,8 @@ class DeviceWatcherService : CompanionDeviceService() {
             )
             if (result.isSuccess) {
                 dao.updateIsTemporarilyAllowed(entity.macAddress, false)
-                NotificationManagerCompat.from(this@DeviceWatcherService)
-                    .cancel(WatchNotificationHelper.notificationId(entity.macAddress))
+                // Remove from nearby set — the notification observer will cancel the notification.
+                app.nearbyDevices.update { it - entity.macAddress }
                 Log.d(TAG, "Re-blocked ${entity.deviceName} after departure")
             } else {
                 Log.e(TAG, "Failed to re-block ${entity.deviceName}: ${result.exceptionOrNull()}")

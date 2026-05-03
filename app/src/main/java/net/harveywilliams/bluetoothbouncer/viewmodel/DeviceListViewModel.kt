@@ -39,7 +39,6 @@ import kotlinx.coroutines.withTimeout
 import net.harveywilliams.bluetoothbouncer.BluetoothBouncerApp
 import net.harveywilliams.bluetoothbouncer.data.BlockedDeviceDao
 import net.harveywilliams.bluetoothbouncer.data.BlockedDeviceEntity
-import net.harveywilliams.bluetoothbouncer.notification.WatchNotificationHelper
 import net.harveywilliams.bluetoothbouncer.service.DeviceWatchManager
 import net.harveywilliams.bluetoothbouncer.shizuku.ShizukuHelper
 
@@ -487,11 +486,8 @@ class DeviceListViewModel(
                     if (policyResult.isSuccess) {
                         if (device.isTemporarilyAllowed) {
                             blockedDeviceDao.updateIsTemporarilyAllowed(device.address, false)
-                            WatchNotificationHelper.postNearbyNotification(
-                                getApplication(),
-                                device.address,
-                                device.name,
-                            )
+                            // Room write triggers the Application-scoped notification observer,
+                            // which will post the "Nearby" notification automatically.
                         }
                     } else {
                         Log.w(TAG, "disconnectDevice: re-block failed for ${device.address}: ${policyResult.exceptionOrNull()?.message}")

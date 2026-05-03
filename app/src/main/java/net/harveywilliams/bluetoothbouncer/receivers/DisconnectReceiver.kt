@@ -17,8 +17,8 @@ import net.harveywilliams.bluetoothbouncer.shizuku.ShizukuHelper
  * On receipt:
  * 1. Calls [ShizukuHelper.disconnectDevice] to force-disconnect all profiles.
  * 2. Calls [ShizukuHelper.setConnectionPolicy] with [ShizukuHelper.POLICY_FORBIDDEN] to re-block.
- * 3. Clears `isTemporarilyAllowed = false` in Room.
- * 4. Replaces the notification with the "Nearby" notification so the user can re-allow quickly.
+ * 3. Clears `isTemporarilyAllowed = false` in Room — the Application-scoped notification
+ *    observer reacts to this write and posts the "Nearby" notification automatically.
  * 5. On failure, posts an error notification instead.
  *
  * Uses [goAsync] to keep the receiver alive long enough for the Shizuku calls to complete.
@@ -50,7 +50,8 @@ class DisconnectReceiver : BroadcastReceiver() {
                 )
                 if (policyResult.isSuccess) {
                     app.database.blockedDeviceDao().updateIsTemporarilyAllowed(macAddress, false)
-                    WatchNotificationHelper.postNearbyNotification(context, macAddress, deviceName)
+                    // Room write triggers the Application-scoped notification observer,
+                    // which will post the "Nearby" notification automatically.
                     Log.d(TAG, "Disconnected and re-blocked $macAddress")
                 } else {
                     Log.w(TAG, "setConnectionPolicy failed for $macAddress: ${policyResult.exceptionOrNull()}")
