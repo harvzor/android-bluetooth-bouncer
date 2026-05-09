@@ -43,7 +43,7 @@ This app has only been tested with the following setup — it may work on other 
 
 ## Getting Started
 
-1. **Install Bluetooth Bouncer** on your phone.
+1. **Install Bluetooth Bouncer** — download the latest APK from [GitHub Releases](https://github.com/harvzor/android-bluetooth-bouncer/releases) and install it on your phone.
 2. **Install [Shizuku](https://github.com/RikkaApps/Shizuku)** from the Play Store or GitHub.
 3. **Start Shizuku** — tap "Setup" in Bluetooth Bouncer and follow the instructions. You can use either Wireless Debugging (no PC needed) or ADB from a computer.
 4. **Grant permission** — Bluetooth Bouncer will ask for Shizuku permission the first time. Tap Allow.
