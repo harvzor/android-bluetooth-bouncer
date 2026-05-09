@@ -1,3 +1,5 @@
+## MODIFIED Requirements
+
 ### Requirement: Derive notification state reactively from device presence and Room state
 The app SHALL maintain an in-memory set of "nearby" device MAC addresses and combine it with the Room blocked-devices flow to automatically post or cancel the correct notification for each device. No call site that changes `isTemporarilyAllowed` or presence state SHALL be required to manually invoke `WatchNotificationHelper`. The observer SHALL run in an Application-scoped coroutine so it is active for the full process lifetime.
 

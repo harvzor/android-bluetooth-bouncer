@@ -6,8 +6,10 @@ import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -54,6 +56,45 @@ class BluetoothBouncerApp : Application() {
      * individual Activity, ViewModel, or Service.
      */
     val applicationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /**
+     * Pending grace-period removal jobs keyed by MAC address.
+     *
+     * Stored here (not in [DeviceWatcherService]) so they survive service destruction —
+     * [CompanionDeviceService] is short-lived and [serviceScope] is cancelled in onDestroy,
+     * which would kill any pending delay before it could fire.
+     *
+     * At most one entry per MAC at any time. Jobs run in [applicationScope] and are
+     * self-evicting on completion.
+     */
+    private val pendingRemovals: MutableMap<String, Job> = mutableMapOf()
+
+    /**
+     * Schedules removal of [mac] from [nearbyDevices] after [DETECTION_GRACE_PERIOD_MS].
+     *
+     * Any previously scheduled removal for the same MAC is cancelled first. Call this from
+     * [DeviceWatcherService.onDeviceDisappeared] for non-temporarily-allowed devices.
+     */
+    fun scheduleNearbyRemoval(mac: String, deviceName: String) {
+        pendingRemovals[mac]?.cancel()
+        pendingRemovals[mac] = applicationScope.launch {
+            delay(DETECTION_GRACE_PERIOD_MS)
+            nearbyDevices.update { it - mac }
+            pendingRemovals.remove(mac)
+            Log.d(TAG, "Grace period expired — removed $deviceName from nearby set")
+        }
+        Log.d(TAG, "Grace period started for $deviceName ($mac)")
+    }
+
+    /**
+     * Cancels any pending grace-period removal for [mac].
+     *
+     * Call this from [DeviceWatcherService.onDeviceAppeared] so a device that reappears
+     * within the grace window does not get removed from [nearbyDevices].
+     */
+    fun cancelPendingRemoval(mac: String) {
+        pendingRemovals.remove(mac)?.cancel()
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -145,5 +186,14 @@ class BluetoothBouncerApp : Application() {
 
     companion object {
         private const val TAG = "BluetoothBouncerApp"
+
+        /**
+         * How long a device remains in the "nearby" set (and its notification stays visible)
+         * after CDM fires [onDeviceDisappeared] for a non-temporarily-allowed device.
+         *
+         * Matches the UI's detection-decay window so the notification and the
+         * "Detected recently" label disappear at the same time.
+         */
+        const val DETECTION_GRACE_PERIOD_MS = 30_000L
     }
 }

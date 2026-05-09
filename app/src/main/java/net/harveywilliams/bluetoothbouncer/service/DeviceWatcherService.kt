@@ -54,6 +54,8 @@ class DeviceWatcherService : CompanionDeviceService() {
                 Log.d(TAG, "Updating stale cdmAssociationId ${entity.cdmAssociationId} -> $associationId for ${entity.macAddress}")
                 dao.updateCdmAssociationId(entity.macAddress, associationId)
             }
+            // Cancel any pending grace-period removal for this device — it's back in range.
+            app.cancelPendingRemoval(entity.macAddress)
             // Add to nearby set — the Application-scoped notification observer will post the
             // correct notification based on the device's current isTemporarilyAllowed / isAlertEnabled state.
             app.nearbyDevices.update { it + entity.macAddress }
@@ -83,9 +85,10 @@ class DeviceWatcherService : CompanionDeviceService() {
             }
 
             if (!entity.isTemporarilyAllowed) {
-                // Not temp-allowed: just remove from nearby set so the notification is cancelled.
-                app.nearbyDevices.update { it - entity.macAddress }
-                Log.d(TAG, "Device ${entity.deviceName} left range — removed from nearby set")
+                // Not temp-allowed: schedule a grace-period removal via the Application so the
+                // job outlives this service instance (CompanionDeviceService is short-lived and
+                // serviceScope is cancelled in onDestroy before any delay could fire).
+                app.scheduleNearbyRemoval(entity.macAddress, entity.deviceName)
                 return@launch
             }
 

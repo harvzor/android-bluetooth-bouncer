@@ -715,7 +715,7 @@ class DeviceListViewModel(
                 val now = SystemClock.elapsedRealtime()
                 // Evict expired entries
                 val expired = lastDetectedTimes.entries
-                    .filter { (_, stamp) -> now - stamp >= 30_000L }
+                    .filter { (_, stamp) -> now - stamp >= BluetoothBouncerApp.DETECTION_GRACE_PERIOD_MS }
                     .map { it.key }
                 for (addr in expired) lastDetectedTimes.remove(addr)
                 // Remap device list in place — no Bluetooth calls
