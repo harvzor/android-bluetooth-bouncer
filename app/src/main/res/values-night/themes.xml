@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Base application theme — actual colors come from Compose Material 3 dynamic color -->
-    <style name="Theme.BluetoothBouncer" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Dark mode base theme -->
+    <style name="Theme.BluetoothBouncer" parent="android:Theme.Material.NoActionBar" />
 
     <style name="Theme.BluetoothBouncer.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#FFFFFF</item>
+        <item name="windowSplashScreenBackground">#1C1B1F</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_icon</item>
         <item name="postSplashScreenTheme">@style/Theme.BluetoothBouncer</item>
     </style>
