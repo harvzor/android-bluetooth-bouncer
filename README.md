@@ -33,6 +33,14 @@ Bluetooth Bouncer adds a missing toggle: per-device control over auto-connect. S
 
 > **Note on Disconnect for allowed devices:** Disconnecting an allowed device sends a disconnect signal to its Bluetooth profiles, but Android may immediately reconnect it because the connection policy is still "allowed." If you want a persistent disconnect, use the Block toggle instead.
 
+## Tested With
+
+This app has only been tested with the following setup — it may work on other devices and configurations, but no guarantees:
+
+- **Phone:** Xiaomi POCO X5 Pro
+- **Bluetooth devices:** Razer BlackShark V3 X (BT), JBL Go 4
+- **Shizuku:** v13.6.0
+
 ## Getting Started
 
 1. **Install Bluetooth Bouncer** on your phone.
