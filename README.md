@@ -95,7 +95,7 @@ docker build \
   .
 ```
 
-The signed APK is written to `./out/app-release.apk`.
+The signed APK is written to `./out/bluetooth-bouncer-<version>.apk`.
 
 ## Releases
 

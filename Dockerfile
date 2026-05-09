@@ -80,7 +80,13 @@ RUN --mount=type=secret,id=keystore,target=/tmp/release.keystore \
         SIGNING_FLAGS="-PreleaseKeystorePath=/tmp/release.keystore -PreleaseStorePassword=${RELEASE_STORE_PASSWORD} -PreleaseKeyAlias=${RELEASE_KEY_ALIAS} -PreleaseKeyPassword=${RELEASE_KEY_PASSWORD}"; \
     ./gradlew assemble${BUILD_TYPE^} ${VERSION_FLAG} ${SIGNING_FLAGS} --no-daemon && \
     mkdir -p /out && \
-    find app/build/outputs/apk -name "*.apk" -exec cp {} /out/ \;
+    find app/build/outputs/apk -name "*.apk" | while read f; do \
+        if [ -n "${VERSION}" ]; then \
+            cp "$f" "/out/bluetooth-bouncer-${VERSION}.apk"; \
+        else \
+            cp "$f" /out/; \
+        fi; \
+    done
 
 # =============================================================================
 # Stage 2: export
