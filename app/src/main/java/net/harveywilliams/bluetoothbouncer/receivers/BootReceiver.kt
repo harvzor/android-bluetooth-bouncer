@@ -4,11 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
-import net.harveywilliams.bluetoothbouncer.BluetoothBouncerApp
 import net.harveywilliams.bluetoothbouncer.shizuku.ShizukuHelper
 
 /**
@@ -22,36 +18,25 @@ class BootReceiver : BroadcastReceiver() {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
 
         Log.d(TAG, "Boot completed — re-applying blocked device policies")
-        val app = context.applicationContext as? BluetoothBouncerApp ?: return
-        val shizukuHelper = app.shizukuHelper
 
-        // Use goAsync so we don't timeout in the main thread
-        val pendingResult = goAsync()
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                shizukuHelper.refreshState()
+        launchAsync(context) { app ->
+            app.shizukuHelper.refreshState()
 
-                if (shizukuHelper.state.value !is ShizukuHelper.State.Ready) {
-                    Log.i(TAG, "Shizuku not ready at boot — skipping policy re-application")
-                    return@launch
+            if (app.shizukuHelper.state.value !is ShizukuHelper.State.Ready) {
+                Log.i(TAG, "Shizuku not ready at boot — skipping policy re-application")
+                return@launchAsync
+            }
+
+            val blockedDevices = app.database.blockedDeviceDao().getAllDevices().first()
+            Log.d(TAG, "Re-applying FORBIDDEN for ${blockedDevices.size} blocked device(s)")
+
+            for (device in blockedDevices) {
+                val result = app.shizukuHelper.setConnectionPolicy(device.macAddress, ShizukuHelper.POLICY_FORBIDDEN)
+                if (result.isFailure) {
+                    Log.w(TAG, "Failed to re-apply policy for ${device.macAddress}: ${result.exceptionOrNull()?.message}")
+                } else {
+                    Log.d(TAG, "Re-applied FORBIDDEN for ${device.macAddress}")
                 }
-
-                val blockedDevices = app.database.blockedDeviceDao().getAllDevices().first()
-                Log.d(TAG, "Re-applying FORBIDDEN for ${blockedDevices.size} blocked device(s)")
-
-                for (device in blockedDevices) {
-                    val result = shizukuHelper.setConnectionPolicy(
-                        device.macAddress,
-                        ShizukuHelper.POLICY_FORBIDDEN
-                    )
-                    if (result.isFailure) {
-                        Log.w(TAG, "Failed to re-apply policy for ${device.macAddress}: ${result.exceptionOrNull()?.message}")
-                    } else {
-                        Log.d(TAG, "Re-applied FORBIDDEN for ${device.macAddress}")
-                    }
-                }
-            } finally {
-                pendingResult.finish()
             }
         }
     }

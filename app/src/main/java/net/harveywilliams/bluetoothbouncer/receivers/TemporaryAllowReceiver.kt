@@ -4,10 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import net.harveywilliams.bluetoothbouncer.BluetoothBouncerApp
 import net.harveywilliams.bluetoothbouncer.notification.WatchNotificationHelper
 import net.harveywilliams.bluetoothbouncer.shizuku.ShizukuHelper
 
@@ -21,26 +17,19 @@ import net.harveywilliams.bluetoothbouncer.shizuku.ShizukuHelper
  *    notification automatically.
  * 3. On failure, posts an error notification instead.
  *
- * Uses [goAsync] to keep the receiver alive long enough for the Shizuku call to complete.
+ * Uses [launchAsync] to keep the receiver alive long enough for the Shizuku call to complete.
  */
 class TemporaryAllowReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != WatchNotificationHelper.ACTION_ALLOW_TEMPORARILY) return
 
-        val macAddress = intent.getStringExtra(WatchNotificationHelper.EXTRA_MAC_ADDRESS)
-            ?: return
+        val macAddress = intent.getStringExtra(WatchNotificationHelper.EXTRA_MAC_ADDRESS) ?: return
         val deviceName = intent.getStringExtra(WatchNotificationHelper.EXTRA_DEVICE_NAME) ?: ""
 
-        val pendingResult = goAsync()
-        val app = context.applicationContext as BluetoothBouncerApp
-
-        CoroutineScope(Dispatchers.IO).launch {
+        launchAsync(context) { app ->
             try {
-                val result = app.shizukuHelper.setConnectionPolicy(
-                    macAddress,
-                    ShizukuHelper.POLICY_ALLOWED,
-                )
+                val result = app.shizukuHelper.setConnectionPolicy(macAddress, ShizukuHelper.POLICY_ALLOWED)
                 if (result.isSuccess) {
                     app.database.blockedDeviceDao().updateIsTemporarilyAllowed(macAddress, true)
                     // Room write triggers the Application-scoped notification observer,
@@ -53,8 +42,6 @@ class TemporaryAllowReceiver : BroadcastReceiver() {
             } catch (e: Exception) {
                 Log.e(TAG, "Unexpected error in TemporaryAllowReceiver for $macAddress", e)
                 WatchNotificationHelper.postErrorNotification(context, macAddress, deviceName)
-            } finally {
-                pendingResult.finish()
             }
         }
     }

@@ -14,7 +14,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import net.harveywilliams.bluetoothbouncer.BluetoothBouncerApp
 import net.harveywilliams.bluetoothbouncer.shizuku.ShizukuHelper
-import kotlinx.coroutines.flow.update
+import net.harveywilliams.bluetoothbouncer.util.BluetoothAclHelper
 
 /**
  * Background presence-detection service for watched blocked devices.
@@ -55,10 +55,7 @@ class DeviceWatcherService : CompanionDeviceService() {
                 dao.updateCdmAssociationId(entity.macAddress, associationId)
             }
             // Cancel any pending grace-period removal for this device — it's back in range.
-            app.cancelPendingRemoval(entity.macAddress)
-            // Add to nearby set — the Application-scoped notification observer will post the
-            // correct notification based on the device's current isTemporarilyAllowed / isAlertEnabled state.
-            app.nearbyDevices.update { it + entity.macAddress }
+            app.nearbyTracker.addDevice(entity.macAddress)
             Log.d(TAG, "Device appeared: ${entity.deviceName} (${entity.macAddress})")
         }
     }
@@ -80,15 +77,15 @@ class DeviceWatcherService : CompanionDeviceService() {
             val entity = resolveEntity(dao, associationId, mac) ?: run {
                 Log.w(TAG, "onDeviceDisappeared: no entity found for associationId=$associationId mac=$mac")
                 // Unknown device — best-effort remove from nearby set using raw MAC if available
-                if (mac != null) app.nearbyDevices.update { it - mac }
+                if (mac != null) app.nearbyTracker.removeDevice(mac)
                 return@launch
             }
 
             if (!entity.isTemporarilyAllowed) {
-                // Not temp-allowed: schedule a grace-period removal via the Application so the
-                // job outlives this service instance (CompanionDeviceService is short-lived and
-                // serviceScope is cancelled in onDestroy before any delay could fire).
-                app.scheduleNearbyRemoval(entity.macAddress, entity.deviceName)
+                // Not temp-allowed: schedule a grace-period removal via the NearbyDeviceTracker
+                // so the job outlives this service instance (CompanionDeviceService is short-lived
+                // and serviceScope is cancelled in onDestroy before any delay could fire).
+                app.nearbyTracker.scheduleRemoval(entity.macAddress, entity.deviceName)
                 return@launch
             }
 
@@ -105,7 +102,7 @@ class DeviceWatcherService : CompanionDeviceService() {
             if (result.isSuccess) {
                 dao.updateIsTemporarilyAllowed(entity.macAddress, false)
                 // Remove from nearby set — the notification observer will cancel the notification.
-                app.nearbyDevices.update { it - entity.macAddress }
+                app.nearbyTracker.removeDevice(entity.macAddress)
                 Log.d(TAG, "Re-blocked ${entity.deviceName} after departure")
             } else {
                 Log.e(TAG, "Failed to re-block ${entity.deviceName}: ${result.exceptionOrNull()}")
@@ -142,17 +139,15 @@ class DeviceWatcherService : CompanionDeviceService() {
 
     /**
      * Returns true if a Bluetooth ACL link to the given [macAddress] is still active.
-     *
-     * Uses the hidden [BluetoothDevice.isConnected] API via reflection (same approach as the
-     * existing codebase). A live ACL link means at least one profile is still connected.
+     * Delegates to [BluetoothAclHelper] which uses the hidden [BluetoothDevice.isConnected]
+     * API via reflection. A live ACL link means at least one profile is still connected.
      */
     @SuppressLint("MissingPermission")
     private fun isDeviceAclConnected(macAddress: String): Boolean {
         return try {
             val adapter = BluetoothAdapter.getDefaultAdapter() ?: return false
             val device = adapter.getRemoteDevice(macAddress)
-            val method = device.javaClass.getMethod("isConnected")
-            method.invoke(device) as? Boolean ?: false
+            BluetoothAclHelper.isConnected(device)
         } catch (e: Exception) {
             Log.w(TAG, "isDeviceAclConnected failed for $macAddress", e)
             false

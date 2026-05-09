@@ -4,10 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import net.harveywilliams.bluetoothbouncer.BluetoothBouncerApp
 import net.harveywilliams.bluetoothbouncer.notification.WatchNotificationHelper
 import net.harveywilliams.bluetoothbouncer.shizuku.ShizukuHelper
 
@@ -21,33 +17,26 @@ import net.harveywilliams.bluetoothbouncer.shizuku.ShizukuHelper
  *    observer reacts to this write and posts the "Nearby" notification automatically.
  * 5. On failure, posts an error notification instead.
  *
- * Uses [goAsync] to keep the receiver alive long enough for the Shizuku calls to complete.
+ * Uses [launchAsync] to keep the receiver alive long enough for the Shizuku calls to complete.
  */
 class DisconnectReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != WatchNotificationHelper.ACTION_DISCONNECT) return
 
-        val macAddress = intent.getStringExtra(WatchNotificationHelper.EXTRA_MAC_ADDRESS)
-            ?: return
+        val macAddress = intent.getStringExtra(WatchNotificationHelper.EXTRA_MAC_ADDRESS) ?: return
         val deviceName = intent.getStringExtra(WatchNotificationHelper.EXTRA_DEVICE_NAME) ?: ""
 
-        val pendingResult = goAsync()
-        val app = context.applicationContext as BluetoothBouncerApp
-
-        CoroutineScope(Dispatchers.IO).launch {
+        launchAsync(context) { app ->
             try {
                 val disconnectResult = app.shizukuHelper.disconnectDevice(macAddress)
                 if (disconnectResult.isFailure) {
                     Log.w(TAG, "disconnectDevice failed for $macAddress: ${disconnectResult.exceptionOrNull()}")
                     WatchNotificationHelper.postErrorNotification(context, macAddress, deviceName)
-                    return@launch
+                    return@launchAsync
                 }
 
-                val policyResult = app.shizukuHelper.setConnectionPolicy(
-                    macAddress,
-                    ShizukuHelper.POLICY_FORBIDDEN,
-                )
+                val policyResult = app.shizukuHelper.setConnectionPolicy(macAddress, ShizukuHelper.POLICY_FORBIDDEN)
                 if (policyResult.isSuccess) {
                     app.database.blockedDeviceDao().updateIsTemporarilyAllowed(macAddress, false)
                     // Room write triggers the Application-scoped notification observer,
@@ -60,8 +49,6 @@ class DisconnectReceiver : BroadcastReceiver() {
             } catch (e: Exception) {
                 Log.e(TAG, "Unexpected error in DisconnectReceiver for $macAddress", e)
                 WatchNotificationHelper.postErrorNotification(context, macAddress, deviceName)
-            } finally {
-                pendingResult.finish()
             }
         }
     }

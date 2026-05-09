@@ -41,6 +41,7 @@ import net.harveywilliams.bluetoothbouncer.data.BlockedDeviceDao
 import net.harveywilliams.bluetoothbouncer.data.BlockedDeviceEntity
 import net.harveywilliams.bluetoothbouncer.service.DeviceWatchManager
 import net.harveywilliams.bluetoothbouncer.shizuku.ShizukuHelper
+import net.harveywilliams.bluetoothbouncer.util.BluetoothAclHelper
 
 class DeviceListViewModel(
     application: Application,
@@ -667,12 +668,12 @@ class DeviceListViewModel(
             val isConn = device.address in connectedAddresses
             val isDet = device.address in detectedAddresses
             val isRecent = secondsAgo != null
-            val section = when {
-                isConn -> DeviceSection.CONNECTED
-                isDet || isRecent -> DeviceSection.DETECTED
-                device.address in blockedAddresses -> DeviceSection.BLOCKED
-                else -> DeviceSection.ALLOWED
-            }
+            val section = computeSection(
+                isConnected = isConn,
+                isDetected = isDet,
+                isBlocked = device.address in blockedAddresses,
+                hasRecentDetection = isRecent,
+            )
             DeviceUiModel(
                 address = device.address,
                 name = device.name ?: device.address,
@@ -693,6 +694,27 @@ class DeviceListViewModel(
         _uiState.update { it.copy(bluetoothEnabled = true, devices = devices, isLoading = false) }
 
         if (lastDetectedTimes.isNotEmpty()) startDecayTickerIfNeeded()
+    }
+
+    /**
+     * Computes the [DeviceSection] for a device from its current state flags.
+     *
+     * Priority order matches the UI's visual hierarchy:
+     * CONNECTED > DETECTED (active or recent) > BLOCKED > ALLOWED.
+     *
+     * Used by both [refreshDeviceList] (initial build) and [startDecayTickerIfNeeded]
+     * (decay remap) so the two paths always agree on section assignment.
+     */
+    private fun computeSection(
+        isConnected: Boolean,
+        isDetected: Boolean,
+        isBlocked: Boolean,
+        hasRecentDetection: Boolean,
+    ): DeviceSection = when {
+        isConnected -> DeviceSection.CONNECTED
+        isDetected || hasRecentDetection -> DeviceSection.DETECTED
+        isBlocked -> DeviceSection.BLOCKED
+        else -> DeviceSection.ALLOWED
     }
 
     /**
@@ -725,14 +747,14 @@ class DeviceListViewModel(
                         val secondsAgo = if (stamp != null) {
                             ((now - stamp) / 1000L).toInt().coerceAtMost(29)
                         } else null
-                        // Recompute section: a decaying device (secondsAgo != null) must stay
-                        // in DETECTED for the full window, not drop to BLOCKED/ALLOWED.
-                        val section = when {
-                            device.isConnected -> DeviceSection.CONNECTED
-                            device.isDetected || secondsAgo != null -> DeviceSection.DETECTED
-                            device.isBlocked -> DeviceSection.BLOCKED
-                            else -> DeviceSection.ALLOWED
-                        }
+                        // Recompute section — a decaying device must stay in DETECTED for
+                        // the full window, not drop to BLOCKED/ALLOWED.
+                        val section = computeSection(
+                            isConnected = device.isConnected,
+                            isDetected = device.isDetected,
+                            isBlocked = device.isBlocked,
+                            hasRecentDetection = secondsAgo != null,
+                        )
                         device.copy(lastDetectedSecondsAgo = secondsAgo, section = section)
                     })
                 }
@@ -741,22 +763,15 @@ class DeviceListViewModel(
     }
 
     /**
-     * Returns addresses of bonded devices that have an active ACL connection, via the hidden
-     * [BluetoothDevice.isConnected] method. Used as a fallback for profiles (e.g. HID) not
-     * covered by the A2DP / Headset proxies.
+     * Returns addresses of bonded devices that have an active ACL connection.
+     * Delegates to [BluetoothAclHelper] which uses the hidden [BluetoothDevice.isConnected]
+     * method via reflection. Used as a fallback for profiles (e.g. HID) not covered by
+     * the A2DP / Headset proxies.
      */
     @SuppressLint("MissingPermission")
     private fun getAclConnectedAddresses(): Set<String> {
         val adapter = btAdapter ?: return emptySet()
-        return adapter.bondedDevices.orEmpty().mapNotNull { device ->
-            try {
-                val method = BluetoothDevice::class.java.getDeclaredMethod("isConnected")
-                val connected = method.invoke(device) as? Boolean ?: false
-                if (connected) device.address else null
-            } catch (e: Exception) {
-                null
-            }
-        }.toSet()
+        return BluetoothAclHelper.getConnectedAddresses(adapter)
     }
 
     // ── Factory ───────────────────────────────────────────────────────────────

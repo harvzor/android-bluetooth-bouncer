@@ -52,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import net.harveywilliams.bluetoothbouncer.ui.theme.AppColors
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -248,7 +249,7 @@ private fun ShizukuStatusBar(
 ) {
     val (color, text) = when (state) {
         is ShizukuHelper.State.Ready ->
-            Color(0xFF4CAF50) to "Shizuku: Ready"
+            AppColors.ShizukuReady to "Shizuku: Ready"
         is ShizukuHelper.State.PermissionDenied ->
             MaterialTheme.colorScheme.error to "Shizuku: Permission denied"
         is ShizukuHelper.State.NotRunning ->
@@ -387,8 +388,8 @@ private fun DeviceRow(
                 imageVector = Icons.Default.Bluetooth,
                 contentDescription = null,
                 tint = when {
-                    device.isConnected -> Color(0xFF87CEEB)
-                    device.isDetected || device.lastDetectedSecondsAgo != null -> Color(0xFFE8A06C)
+                    device.isConnected -> AppColors.DeviceConnected
+                    device.isDetected || device.lastDetectedSecondsAgo != null -> AppColors.DeviceDetected
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 },
                 modifier = Modifier.size(28.dp)
@@ -411,25 +412,25 @@ private fun DeviceRow(
                     Text(
                         text = "Temporarily connected",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF87CEEB)
+                        color = AppColors.DeviceConnected
                     )
                 } else if (device.isConnected) {
                     Text(
                         text = "Connected",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF87CEEB)
+                        color = AppColors.DeviceConnected
                     )
                 } else if (device.isDetected) {
                     Text(
                         text = "Detected",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFFE8A06C)
+                        color = AppColors.DeviceDetected
                     )
                 } else if (device.lastDetectedSecondsAgo != null) {
                     Text(
                         text = "Detected recently",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFFE8A06C)
+                        color = AppColors.DeviceDetected
                     )
                 }
             }

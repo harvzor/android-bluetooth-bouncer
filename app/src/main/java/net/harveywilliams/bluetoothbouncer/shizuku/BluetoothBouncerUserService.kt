@@ -95,92 +95,48 @@ class BluetoothBouncerUserService : IBluetoothBouncerUserService.Stub() {
         }, 4 /* HID_HOST */)
     }
 
+    // ── AIDL implementations ──────────────────────────────────────────────────
+
     override fun setConnectionPolicy(macAddress: String, policy: Int): IntArray {
-        // Attempt lazy initialization if init-time context acquisition failed.
-        reinitializeIfNeeded()
-
-        val device: BluetoothDevice? = try {
-            bluetoothAdapter?.getRemoteDevice(macAddress)
-        } catch (e: Exception) {
-            Log.e(TAG, "Invalid MAC address: $macAddress", e)
-            null
+        val results = forEachProfile(macAddress) { proxy, device ->
+            callSetConnectionPolicy(proxy, device, policy)
         }
-        if (device == null) {
-            Log.e(TAG, "setConnectionPolicy: device is null (adapter=${bluetoothAdapter})")
-            return intArrayOf(-1, -1, -1)
-        }
-
-        val results = IntArray(3) { -1 }
-        val timeoutSec = 8L
-
-        try {
-            val a2dp = a2dpFuture.get(timeoutSec, TimeUnit.SECONDS)
-            results[0] = if (a2dp != null) callSetConnectionPolicy(a2dp, device, policy) else -1
-        } catch (e: Exception) {
-            Log.w(TAG, "A2DP proxy timeout/error", e)
-        }
-
-        try {
-            val headset = headsetFuture.get(timeoutSec, TimeUnit.SECONDS)
-            results[1] = if (headset != null) callSetConnectionPolicy(headset, device, policy) else -1
-        } catch (e: Exception) {
-            Log.w(TAG, "Headset proxy timeout/error", e)
-        }
-
-        try {
-            val hid = hidFuture.get(timeoutSec, TimeUnit.SECONDS)
-            results[2] = if (hid != null) callSetConnectionPolicy(hid, device, policy) else -1
-        } catch (e: Exception) {
-            Log.w(TAG, "HID proxy timeout/error", e)
-        }
-
         Log.d(TAG, "setConnectionPolicy($macAddress, $policy) → ${results.toList()}")
         return results
     }
 
     override fun connectDevice(macAddress: String): IntArray {
-        reinitializeIfNeeded()
-
-        val device: BluetoothDevice? = try {
-            bluetoothAdapter?.getRemoteDevice(macAddress)
-        } catch (e: Exception) {
-            Log.e(TAG, "Invalid MAC address: $macAddress", e)
-            null
+        val results = forEachProfile(macAddress) { proxy, device ->
+            callProfileMethod(proxy, device, "connect")
         }
-        if (device == null) {
-            Log.e(TAG, "connectDevice: device is null (adapter=${bluetoothAdapter})")
-            return intArrayOf(-1, -1, -1)
-        }
-
-        val results = IntArray(3) { -1 }
-        val timeoutSec = 8L
-
-        try {
-            val a2dp = a2dpFuture.get(timeoutSec, TimeUnit.SECONDS)
-            results[0] = if (a2dp != null) callProfileMethod(a2dp, device, "connect") else -1
-        } catch (e: Exception) {
-            Log.w(TAG, "A2DP proxy timeout/error during connect", e)
-        }
-
-        try {
-            val headset = headsetFuture.get(timeoutSec, TimeUnit.SECONDS)
-            results[1] = if (headset != null) callProfileMethod(headset, device, "connect") else -1
-        } catch (e: Exception) {
-            Log.w(TAG, "Headset proxy timeout/error during connect", e)
-        }
-
-        try {
-            val hid = hidFuture.get(timeoutSec, TimeUnit.SECONDS)
-            results[2] = if (hid != null) callProfileMethod(hid, device, "connect") else -1
-        } catch (e: Exception) {
-            Log.w(TAG, "HID proxy timeout/error during connect", e)
-        }
-
         Log.d(TAG, "connectDevice($macAddress) → ${results.toList()}")
         return results
     }
 
     override fun disconnectDevice(macAddress: String): IntArray {
+        val results = forEachProfile(macAddress) { proxy, device ->
+            callProfileMethod(proxy, device, "disconnect")
+        }
+        Log.d(TAG, "disconnectDevice($macAddress) → ${results.toList()}")
+        return results
+    }
+
+    override fun isAlive(): Boolean = true
+
+    // ── Core dispatch helper ──────────────────────────────────────────────────
+
+    /**
+     * Dispatches [action] across all three Bluetooth profile proxies (A2DP, Headset, HID),
+     * returning an [IntArray] of size 3 with the result for each:
+     *   1 = success, 0 = call returned false, -1 = proxy unavailable or timed out.
+     *
+     * Handles lazy initialisation, MAC→[BluetoothDevice] resolution, and per-proxy
+     * timeout handling in one place so the three AIDL methods stay one-liners.
+     */
+    private fun forEachProfile(
+        macAddress: String,
+        action: (proxy: Any, device: BluetoothDevice) -> Int,
+    ): IntArray {
         reinitializeIfNeeded()
 
         val device: BluetoothDevice? = try {
@@ -190,37 +146,30 @@ class BluetoothBouncerUserService : IBluetoothBouncerUserService.Stub() {
             null
         }
         if (device == null) {
-            Log.e(TAG, "disconnectDevice: device is null (adapter=${bluetoothAdapter})")
+            Log.e(TAG, "forEachProfile: device is null (adapter=$bluetoothAdapter)")
             return intArrayOf(-1, -1, -1)
         }
 
+        data class ProfileEntry(val name: String, val future: CompletableFuture<*>)
+        val profiles = listOf(
+            ProfileEntry("A2DP",    a2dpFuture),
+            ProfileEntry("Headset", headsetFuture),
+            ProfileEntry("HID",     hidFuture),
+        )
+
         val results = IntArray(3) { -1 }
-        val timeoutSec = 8L
-
-        try {
-            val a2dp = a2dpFuture.get(timeoutSec, TimeUnit.SECONDS)
-            results[0] = if (a2dp != null) callProfileMethod(a2dp, device, "disconnect") else -1
-        } catch (e: Exception) {
-            Log.w(TAG, "A2DP proxy timeout/error during disconnect", e)
+        profiles.forEachIndexed { i, entry ->
+            try {
+                val proxy = entry.future.get(PROXY_TIMEOUT_SEC, TimeUnit.SECONDS)
+                results[i] = if (proxy != null) action(proxy, device) else -1
+            } catch (e: Exception) {
+                Log.w(TAG, "${entry.name} proxy timeout/error", e)
+            }
         }
-
-        try {
-            val headset = headsetFuture.get(timeoutSec, TimeUnit.SECONDS)
-            results[1] = if (headset != null) callProfileMethod(headset, device, "disconnect") else -1
-        } catch (e: Exception) {
-            Log.w(TAG, "Headset proxy timeout/error during disconnect", e)
-        }
-
-        try {
-            val hid = hidFuture.get(timeoutSec, TimeUnit.SECONDS)
-            results[2] = if (hid != null) callProfileMethod(hid, device, "disconnect") else -1
-        } catch (e: Exception) {
-            Log.w(TAG, "HID proxy timeout/error during disconnect", e)
-        }
-
-        Log.d(TAG, "disconnectDevice($macAddress) → ${results.toList()}")
         return results
     }
+
+    // ── Reflection helpers ────────────────────────────────────────────────────
 
     /**
      * Calls proxy.setConnectionPolicy(device, policy) via reflection.
@@ -256,10 +205,9 @@ class BluetoothBouncerUserService : IBluetoothBouncerUserService.Stub() {
         }
     }
 
-    override fun isAlive(): Boolean = true
-
     companion object {
         private const val TAG = "BBUserService"
+        private const val PROXY_TIMEOUT_SEC = 8L
 
         /**
          * Resolves a BluetoothAdapter using three strategies in order:

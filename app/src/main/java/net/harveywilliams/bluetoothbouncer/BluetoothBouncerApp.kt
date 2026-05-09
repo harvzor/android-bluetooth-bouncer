@@ -6,22 +6,18 @@ import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import net.harveywilliams.bluetoothbouncer.data.AppDatabase
 import net.harveywilliams.bluetoothbouncer.notification.WatchNotificationHelper
+import net.harveywilliams.bluetoothbouncer.service.NearbyDeviceTracker
 import net.harveywilliams.bluetoothbouncer.shizuku.ShizukuHelper
 
 /**
- * Application class — provides the Room database, ShizukuHelper, and the app-level
- * Bluetooth refresh signal singletons.
+ * Application class — provides the Room database, ShizukuHelper, the app-level
+ * Bluetooth refresh signal, and the [NearbyDeviceTracker] singletons.
  */
 class BluetoothBouncerApp : Application() {
 
@@ -41,60 +37,19 @@ class BluetoothBouncerApp : Application() {
     )
 
     /**
-     * In-memory set of MAC addresses whose CDM-associated devices are currently nearby
-     * (i.e., within Bluetooth range as reported by [DeviceWatcherService]).
-     *
-     * This is intentionally NOT persisted to Room. CDM delivers presence transitions, not
-     * current state — using Room would risk a stale isNearby=true after a missed
-     * onDeviceDisappeared callback, resulting in a phantom notification with no self-healing
-     * path. The in-memory default of empty (no phantom) is the safer failure mode.
-     */
-    val nearbyDevices: MutableStateFlow<Set<String>> = MutableStateFlow(emptySet())
-
-    /**
      * Application-scoped coroutine scope for long-lived observers that must outlive any
      * individual Activity, ViewModel, or Service.
      */
     val applicationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /**
-     * Pending grace-period removal jobs keyed by MAC address.
+     * Tracks which CDM-associated devices are currently within Bluetooth range.
      *
-     * Stored here (not in [DeviceWatcherService]) so they survive service destruction —
-     * [CompanionDeviceService] is short-lived and [serviceScope] is cancelled in onDestroy,
-     * which would kill any pending delay before it could fire.
-     *
-     * At most one entry per MAC at any time. Jobs run in [applicationScope] and are
-     * self-evicting on completion.
+     * Encapsulates the nearby-device [StateFlow], grace-period removal jobs, and the
+     * transition helpers ([NearbyDeviceTracker.addDevice], [NearbyDeviceTracker.scheduleRemoval],
+     * [NearbyDeviceTracker.cancelPendingRemoval]) that were previously inline on this class.
      */
-    private val pendingRemovals: MutableMap<String, Job> = mutableMapOf()
-
-    /**
-     * Schedules removal of [mac] from [nearbyDevices] after [DETECTION_GRACE_PERIOD_MS].
-     *
-     * Any previously scheduled removal for the same MAC is cancelled first. Call this from
-     * [DeviceWatcherService.onDeviceDisappeared] for non-temporarily-allowed devices.
-     */
-    fun scheduleNearbyRemoval(mac: String, deviceName: String) {
-        pendingRemovals[mac]?.cancel()
-        pendingRemovals[mac] = applicationScope.launch {
-            delay(DETECTION_GRACE_PERIOD_MS)
-            nearbyDevices.update { it - mac }
-            pendingRemovals.remove(mac)
-            Log.d(TAG, "Grace period expired — removed $deviceName from nearby set")
-        }
-        Log.d(TAG, "Grace period started for $deviceName ($mac)")
-    }
-
-    /**
-     * Cancels any pending grace-period removal for [mac].
-     *
-     * Call this from [DeviceWatcherService.onDeviceAppeared] so a device that reappears
-     * within the grace window does not get removed from [nearbyDevices].
-     */
-    fun cancelPendingRemoval(mac: String) {
-        pendingRemovals.remove(mac)?.cancel()
-    }
+    val nearbyTracker: NearbyDeviceTracker by lazy { NearbyDeviceTracker(applicationScope) }
 
     override fun onCreate() {
         super.onCreate()
@@ -130,7 +85,10 @@ class BluetoothBouncerApp : Application() {
      */
     private fun launchNotificationObserver() {
         applicationScope.launch {
-            combine(nearbyDevices, database.blockedDeviceDao().getAllDevices()) { nearby, devices ->
+            kotlinx.coroutines.flow.combine(
+                nearbyTracker.nearbyDevices,
+                database.blockedDeviceDao().getAllDevices()
+            ) { nearby, devices ->
                 nearby to devices
             }.collect { (nearby, devices) ->
                 for (device in devices) {

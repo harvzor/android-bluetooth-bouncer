@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import net.harveywilliams.bluetoothbouncer.ui.theme.AppColors
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -155,7 +156,7 @@ private fun ShizukuStatusCard(state: ShizukuHelper.State) {
         )
         is ShizukuHelper.State.Ready -> StatusInfo(
             icon = Icons.Default.CheckCircle,
-            color = Color(0xFF4CAF50),
+            color = AppColors.ShizukuReady,
             title = "Shizuku: Ready",
             description = "Shizuku is running and permission is granted. All device blocking operations are available."
         )
