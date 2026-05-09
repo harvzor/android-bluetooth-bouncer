@@ -8,6 +8,18 @@ android {
     namespace = "net.harveywilliams.bluetoothbouncer"
     compileSdk = 36
 
+    signingConfigs {
+        val keystorePath = findProperty("releaseKeystorePath")?.toString()
+        if (!keystorePath.isNullOrBlank()) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = findProperty("releaseStorePassword")?.toString()
+                keyAlias = findProperty("releaseKeyAlias")?.toString()
+                keyPassword = findProperty("releaseKeyPassword")?.toString()
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "net.harveywilliams.bluetoothbouncer"
         minSdk = 31
@@ -24,6 +36,7 @@ android {
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

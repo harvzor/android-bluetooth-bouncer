@@ -69,9 +69,16 @@ COPY app/ app/
 
 ARG BUILD_TYPE=debug
 ARG VERSION
-RUN VERSION_FLAG="" && \
+RUN --mount=type=secret,id=keystore,target=/tmp/release.keystore \
+    --mount=type=secret,id=store_password,env=RELEASE_STORE_PASSWORD \
+    --mount=type=secret,id=key_alias,env=RELEASE_KEY_ALIAS \
+    --mount=type=secret,id=key_password,env=RELEASE_KEY_PASSWORD \
+    VERSION_FLAG="" && \
     [ -n "${VERSION}" ] && VERSION_FLAG="-PappVersionName=${VERSION}"; \
-    ./gradlew assemble${BUILD_TYPE^} ${VERSION_FLAG} --no-daemon && \
+    SIGNING_FLAGS="" && \
+    [ -f "/tmp/release.keystore" ] && \
+        SIGNING_FLAGS="-PreleaseKeystorePath=/tmp/release.keystore -PreleaseStorePassword=${RELEASE_STORE_PASSWORD} -PreleaseKeyAlias=${RELEASE_KEY_ALIAS} -PreleaseKeyPassword=${RELEASE_KEY_PASSWORD}"; \
+    ./gradlew assemble${BUILD_TYPE^} ${VERSION_FLAG} ${SIGNING_FLAGS} --no-daemon && \
     mkdir -p /out && \
     find app/build/outputs/apk -name "*.apk" -exec cp {} /out/ \;
 

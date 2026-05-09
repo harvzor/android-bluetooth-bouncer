@@ -78,24 +78,63 @@ docker build --output=out .
 
 The APK is written to `./out/app-debug.apk`.
 
-To build a release APK:
+To build a signed release APK locally (requires a keystore — see [Releases](#releases)):
 
 ```bash
-docker build --build-arg BUILD_TYPE=release --output=out .
+RELEASE_STORE_PASSWORD=<store-password> \
+RELEASE_KEY_ALIAS=release \
+RELEASE_KEY_PASSWORD=<key-password> \
+docker build \
+  --build-arg BUILD_TYPE=release \
+  --build-arg VERSION=1.0.0 \
+  --secret id=keystore,src=./release.keystore \
+  --secret id=store_password,env=RELEASE_STORE_PASSWORD \
+  --secret id=key_alias,env=RELEASE_KEY_ALIAS \
+  --secret id=key_password,env=RELEASE_KEY_PASSWORD \
+  --output=out \
+  .
 ```
+
+The signed APK is written to `./out/app-release.apk`.
 
 ## Releases
 
-Pushing a version tag triggers an automated GitHub Actions workflow that builds a release APK and attaches it to the corresponding GitHub Release:
+Pushing a version tag triggers an automated GitHub Actions workflow that builds a signed release APK and attaches it to the corresponding GitHub Release:
 
 ```bash
 git tag v1.0.0
 git push origin v1.0.0
 ```
 
-The workflow uses the project's `Dockerfile` — the same hermetic build as above — with `BUILD_TYPE=release`. No secrets or additional configuration are required; the workflow uses the built-in `GITHUB_TOKEN`.
+### Signing
 
-> **Note:** Release APKs are unsigned. To install directly on a device, you will need to sign the APK separately or enable "Install unknown apps" for a sideload-capable source.
+Release APKs are signed inside the Docker build using a keystore stored as GitHub Actions secrets. The keystore is mounted as a BuildKit secret (never baked into any image layer). Four repository secrets must be configured:
+
+| Secret | Description |
+|--------|-------------|
+| `RELEASE_KEYSTORE_BASE64` | Base64-encoded keystore file |
+| `RELEASE_KEYSTORE_PASSWORD` | Keystore store password |
+| `RELEASE_KEY_ALIAS` | Key alias within the keystore |
+| `RELEASE_KEY_PASSWORD` | Key password |
+
+To generate a keystore and populate these secrets for the first time:
+
+```bash
+# 1. Generate the keystore
+keytool -genkeypair -v \
+  -keystore release.keystore \
+  -alias release \
+  -keyalg RSA -keysize 2048 -validity 10000 \
+  -storepass <store-password> -keypass <key-password>
+
+# 2. Add secrets to GitHub
+gh secret set RELEASE_KEYSTORE_BASE64 --body "$(base64 -w0 release.keystore)"
+gh secret set RELEASE_KEYSTORE_PASSWORD --body "<store-password>"
+gh secret set RELEASE_KEY_ALIAS --body "release"
+gh secret set RELEASE_KEY_PASSWORD --body "<key-password>"
+```
+
+> **Keep the keystore safe.** If it is lost, APKs signed with a new keystore will be treated by Android as a different app — existing users will need to uninstall and reinstall.
 
 ## App Icon
 

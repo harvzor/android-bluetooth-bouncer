@@ -23,6 +23,15 @@
 - **APK output**: `app\build\outputs\apk\debug\app-debug.apk`
 - **Install to device**: `& "$env:ANDROID_HOME\platform-tools\adb.exe" install -r app\build\outputs\apk\debug\app-debug.apk`
 
+## Release Signing
+- **Keystore file**: `release.keystore` in the repo root — **never commit this file** (it is `.gitignore`d)
+- **Signing config**: conditional `signingConfigs` block in `app/build.gradle.kts` — activated only when `-PreleaseKeystorePath` is passed to Gradle; absent → unsigned APK (safe for local dev/debug)
+- **Gradle properties used**: `releaseKeystorePath`, `releaseStorePassword`, `releaseKeyAlias`, `releaseKeyPassword`
+- **Docker build**: keystore is passed via `--secret id=keystore,src=./release.keystore` (BuildKit secret mount — never stored in image layers); passwords via `--build-arg`. The final stage is `FROM scratch` so no image is stored or pushed; the build args do not persist.
+- **GitHub Actions**: keystore is stored base64-encoded as `RELEASE_KEYSTORE_BASE64` secret; decoded to a file before the Docker build step. Three additional secrets: `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`.
+- **Local signed build**: `$env:RELEASE_STORE_PASSWORD="<pw>"; $env:RELEASE_KEY_ALIAS="release"; $env:RELEASE_KEY_PASSWORD="<pw>"; docker build --build-arg BUILD_TYPE=release --secret id=keystore,src=./release.keystore --secret id=store_password,env=RELEASE_STORE_PASSWORD --secret id=key_alias,env=RELEASE_KEY_ALIAS --secret id=key_password,env=RELEASE_KEY_PASSWORD --output=out .`
+- **Verify signing**: `& "$env:ANDROID_HOME\build-tools\<version>\apksigner.bat" verify --verbose out\app-release.apk`
+
 ## Android API Gotchas
 - **`BluetoothProfile.HID_HOST`**: Not in the compile-time SDK — use integer literal `4` directly
 - **`setConnectionPolicy` reflection**: Hidden API; called via reflection in the Shizuku UserService — policy parameter must be `Int::class.java` (primitive)

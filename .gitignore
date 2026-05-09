@@ -22,3 +22,6 @@ screen*.png
 
 # Kotlin compiler/cache
 .kotlin/
+
+# Release signing keystore (never commit — store as GitHub Secret)
+release.keystore
