@@ -1,7 +1,7 @@
 # Bluetooth Bouncer
 
 <p align="center">
-  <img src=".github/cover.png" alt="Bluetooth Bouncer — Android bouncer blocking a Bluetooth device from connecting" width="600">
+  <img src=".github/cover.png" alt="Bluetooth Bouncer — Android bouncer blocking a Bluetooth device from connecting" width="300">
 </p>
 
 <p align="center"><em>"Sorry mate, not tonight."</em></p>
