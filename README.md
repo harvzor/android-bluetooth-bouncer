@@ -15,11 +15,11 @@ Bluetooth Bouncer adds a missing toggle: per-device control over auto-connect. S
 ## Screenshots
 
 <p align="center">
-  <img src=".github/screenshots/screenshot-device-list.png" alt="Bluetooth Bouncer main screen showing connected, detected, blocked and allowed devices" width="300">
-  <img src=".github/screenshots/screenshot-notification.png" alt="Bluetooth Bouncer notification alerting that a blocked device is nearby" width="300">
-  <img src=".github/screenshots/screenshot-shizuku-denied.png" alt="Bluetooth Bouncer showing Shizuku permission denied with Setup prompt" width="300">
-  <img src=".github/screenshots/screenshot-shizuku-setup.png" alt="Shizuku Setup screen with instructions for Wireless Debugging and ADB" width="300">
-  <img src=".github/screenshots/screenshot-temporarily-connected.png" alt="Bluetooth Bouncer notification showing a blocked device temporarily connected with Disconnect action" width="300">
+  <img src=".github/screenshots/device-list.png" alt="Bluetooth Bouncer main screen showing connected, detected, blocked and allowed devices" width="300">
+  <img src=".github/screenshots/notification.png" alt="Bluetooth Bouncer notification alerting that a blocked device is nearby" width="300">
+  <img src=".github/screenshots/shizuku-denied.png" alt="Bluetooth Bouncer showing Shizuku permission denied with Setup prompt" width="300">
+  <img src=".github/screenshots/shizuku-setup.png" alt="Shizuku Setup screen with instructions for Wireless Debugging and ADB" width="300">
+  <img src=".github/screenshots/temporarily-connected.png" alt="Bluetooth Bouncer notification showing a blocked device temporarily connected with Disconnect action" width="300">
 </p>
 
 ## Demo video
