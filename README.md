@@ -16,7 +16,7 @@ Bluetooth Bouncer adds a missing toggle: per-device control over auto-connect. S
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=86Numx74dek">
-    <img src="https://img.youtube.com/vi/86Numx74dek/maxresdefault.jpg" alt="Bluetooth Bouncer demo video" width="600">
+    <img src="https://img.youtube.com/vi/86Numx74dek/maxresdefault.jpg" alt="Bluetooth Bouncer demo video">
   </a>
   <br>
   <em>▶ Watch the demo on YouTube</em>
