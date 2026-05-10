@@ -17,26 +17,26 @@ Bluetooth Bouncer adds a missing toggle: per-device control over auto-connect. S
 <table align="center">
   <tr>
     <td align="center">
-      <img src=".github/screenshots/first-open.png" alt="Shizuku permission denied" width="100%"><br>
+      <img src=".github/screenshots/first-open.png" alt="Shizuku permission denied" width="220px"><br>
       <em>How the apps looks on first open</em>
     </td>
     <td align="center">
-      <img src=".github/screenshots/shizuku-setup.png" alt="Shizuku setup guide" width="100%"><br>
+      <img src=".github/screenshots/shizuku-setup.png" alt="Shizuku setup guide" width="220px"><br>
       <em>Shizuku setup guide</em>
     </td>
     <td align="center">
-      <img src=".github/screenshots/device-list.png" alt="Main device list" width="100%"><br>
+      <img src=".github/screenshots/device-list.png" alt="Main device list" width="220px"><br>
       <em>Main device list</em>
     </td>
   </tr>
   <tr>
     <td align="center">
-      <img src=".github/screenshots/notification-blocked.png" alt="Blocked device alert" width="100%"><br>
+      <img src=".github/screenshots/notification-blocked.png" alt="Blocked device alert" width="220px"><br>
       <em>Notification when a device has turned on</em>
     </td>
     <td align="center">
-      <img src=".github/screenshots/notification-temporarily-connected.png" alt="Temporarily connected" width="100%"><br>
-      <em>Notification after turning on a device</em>
+      <img src=".github/screenshots/notification-temporarily-connected.png" alt="Temporarily connected" width="220px"><br>
+      <em>Notification after temporarily connecting a device</em>
     </td>
     <td></td>
   </tr>
