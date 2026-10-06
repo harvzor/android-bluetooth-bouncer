@@ -209,6 +209,42 @@ class BluetoothBouncerUserService : IBluetoothBouncerUserService.Stub() {
         private const val TAG = "BBUserService"
         private const val PROXY_TIMEOUT_SEC = 8L
 
+        @SuppressLint("PrivateApi")
+        private fun initializeBluetoothFramework(): Boolean {
+            return try {
+                val managerClass = Class.forName("android.os.BluetoothServiceManager")
+                val manager = managerClass
+                    .getDeclaredConstructor()
+                    .newInstance()
+
+                val initializerClass =
+                    Class.forName("android.bluetooth.BluetoothFrameworkInitializer")
+
+                initializerClass
+                    .getDeclaredMethod(
+                        "setBluetoothServiceManager",
+                        managerClass
+                    )
+                    .also { it.isAccessible = true }
+                    .invoke(null, manager)
+
+                Log.d(TAG, "BluetoothFrameworkInitializer initialized successfully")
+                true
+            } catch (e: java.lang.reflect.InvocationTargetException) {
+                 // It may already have been initialized. That's not necessarily an error.
+                Log.w(
+                    TAG,
+                    "BluetoothFrameworkInitializer initialization call failed: " +
+                        "${e.targetException?.message}",
+                     e.targetException
+                )
+                false
+            } catch (e: Exception) {
+                Log.e(TAG, "BluetoothFrameworkInitializer initialization failed", e)
+                false
+            }
+        }
+
         /**
          * Resolves a BluetoothAdapter using three strategies in order:
          *
@@ -220,6 +256,8 @@ class BluetoothBouncerUserService : IBluetoothBouncerUserService.Stub() {
          */
         @SuppressLint("PrivateApi")
         private fun resolveBluetoothAdapter(ctx: Context?): BluetoothAdapter? {
+            initializeBluetoothFramework()
+
             // Strategy 1: normal system service lookup
             ctx?.let {
                 val adapter = (it.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
